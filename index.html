@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TikTok Live Announcer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Exo+2:wght@400;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- ══ FLASH OVERLAY ══════════════════════════════════════ -->
+<div class="flash-overlay" id="flash-overlay"></div>
+
+<!-- ══ SETUP WIZARD ══════════════════════════════════════ -->
+<div id="wizard">
+  <div class="wizard-box">
+    <div class="wizard-logo">🎙</div>
+    <div class="wizard-title">TikTok Live Announcer</div>
+    <div class="wizard-subtitle">Accessibility-first. Built for everyone.</div>
+    <div class="wizard-progress" id="wiz-dots"></div>
+    <div class="wizard-step-label" id="wiz-step"></div>
+    <div class="wizard-speaking" id="wiz-speaking"></div>
+    <div id="wiz-content"></div>
+  </div>
+</div>
+
+<!-- ══ MAIN APP ═══════════════════════════════════════════ -->
+<div id="app" class="hidden">
+
+  <!-- TOP BAR -->
+  <header id="topbar" role="banner">
+    <div class="tb-left">
+      <button class="btn-connect" id="btn-connect" onclick="TikTok.toggleConnect()" aria-label="Connect to TikTok Live">
+        CONNECT TO TIKTOK
+      </button>
+      <div class="live-pill" id="live-pill">
+        <span class="live-dot" id="live-dot"></span>
+        <span id="live-label">OFFLINE</span>
+      </div>
+      <div id="stream-timer" aria-live="off">00:00:00</div>
+      <span class="sim-badge hidden" id="sim-badge">SIM</span>
+    </div>
+    <div class="tb-center">
+      <div class="tb-stat"><span class="tb-val" id="tb-viewers">0</span><span class="tb-lbl">Viewers</span></div>
+      <div class="tb-stat"><span class="tb-val green" id="tb-follows">0</span><span class="tb-lbl">Follows</span></div>
+      <div class="tb-stat"><span class="tb-val gold" id="tb-coins">0</span><span class="tb-lbl">Coins</span></div>
+      <div class="tb-stat"><span class="tb-val" id="tb-queue">0</span><span class="tb-lbl">Queue</span></div>
+    </div>
+    <div class="tb-right">
+      <div class="voice-indicator" id="voice-indicator" title="Voice commands">
+        <span class="voice-dot" id="voice-dot"></span>
+        <span id="voice-label">MIC OFF</span>
+      </div>
+      <button class="btn-panic" id="btn-panic" onclick="App.panic()" aria-label="Panic button — mutes everything [P]">
+        ⚠ PANIC
+      </button>
+    </div>
+  </header>
+
+  <!-- MAIN GRID -->
+  <main id="main" role="main">
+
+    <!-- LEFT PANEL -->
+    <aside id="panel-left" aria-label="Status panel">
+
+      <div class="panel-section">
+        <div class="section-title">Now Announcing</div>
+        <div id="now-playing-box" role="status" aria-live="polite">
+          <div class="np-type" id="np-type">IDLE</div>
+          <div class="np-text" id="np-text">Ready. Start simulation or connect to TikTok.</div>
+          <div class="np-bar"><div class="np-bar-fill" id="np-bar"></div></div>
+        </div>
+      </div>
+
+      <div class="panel-section">
+        <div class="section-title">Queue <span id="queue-count">0</span></div>
+        <div id="queue-list" aria-label="Announcement queue"></div>
+      </div>
+
+      <div class="panel-section">
+        <div class="section-title">Tonight's Stats</div>
+        <div class="stat-grid">
+          <div class="stat-box"><div class="stat-val green" id="s-follows">0</div><div class="stat-lbl">Follows</div></div>
+          <div class="stat-box"><div class="stat-val blue" id="s-peak">0</div><div class="stat-lbl">Peak</div></div>
+          <div class="stat-box"><div class="stat-val gold" id="s-coins">0</div><div class="stat-lbl">Coins</div></div>
+          <div class="stat-box"><div class="stat-val" id="s-gifts">0</div><div class="stat-lbl">Gifts</div></div>
+          <div class="stat-box"><div class="stat-val" id="s-comments">0</div><div class="stat-lbl">Comments</div></div>
+          <div class="stat-box"><div class="stat-val" id="s-time">0m</div><div class="stat-lbl">Live</div></div>
+        </div>
+      </div>
+
+      <div class="panel-section">
+        <div class="section-title">Gift Goal</div>
+        <div class="goal-label" id="goal-label">Set a goal in Settings</div>
+        <div class="goal-bar"><div class="goal-fill" id="goal-fill"></div></div>
+        <div class="goal-pct" id="goal-pct"></div>
+      </div>
+
+      <div class="panel-section">
+        <div class="section-title">Top Gifter</div>
+        <div class="info-line" id="top-gifter-display">—</div>
+        <div class="section-title" style="margin-top:8px">Top Commenter</div>
+        <div class="info-line" id="top-commenter-display">—</div>
+      </div>
+
+    </aside>
+
+    <!-- CENTER — EVENT LOG -->
+    <section id="center" aria-label="Event log">
+      <div class="log-header">
+        <span>Live Event Log</span>
+        <button onclick="UI.clearLog()" class="clear-btn" aria-label="Clear log">Clear</button>
+      </div>
+      <div id="log-container" role="log" aria-live="polite" aria-label="Stream events"></div>
+    </section>
+
+    <!-- RIGHT PANEL — CONTROLS -->
+    <aside id="panel-right" aria-label="Controls">
+
+      <button class="mute-btn" id="mute-btn" onclick="App.toggleMute()" aria-label="Toggle mute [M]">
+        🔊 UNMUTED <kbd>M</kbd>
+      </button>
+
+      <div class="panel-section">
+        <div class="section-title">Speech Rate <span id="rate-val">1.0×</span></div>
+        <div class="slider-row">
+          <span class="key-hint">−</span>
+          <input type="range" id="rate-slider" min="0.5" max="2.5" step="0.1" value="1.0"
+            oninput="App.setRate(this.value)" aria-label="Speech rate">
+          <span class="key-hint">+</span>
+        </div>
+      </div>
+
+      <div class="panel-section">
+        <div class="section-title">Voice Volume <span id="vol-val">100%</span></div>
+        <input type="range" id="vol-slider" min="0" max="100" value="100"
+          oninput="App.setVolume(this.value)" aria-label="Voice volume" style="width:100%">
+      </div>
+
+      <div class="panel-section">
+        <div class="section-title">Sound FX <span id="sfx-val">80%</span></div>
+        <input type="range" id="sfx-slider" min="0" max="100" value="80"
+          oninput="App.setSfxVolume(this.value)" aria-label="Sound effects volume" style="width:100%">
+      </div>
+
+      <div class="panel-section">
+        <div class="toggle-row">
+          <span class="toggle-label">Q&amp;A Mode <kbd>Q</kbd></span>
+          <label class="toggle"><input type="checkbox" id="qa-toggle" onchange="App.setQA(this.checked)"><span class="tog-slider"></span></label>
+        </div>
+        <div class="toggle-row">
+          <span class="toggle-label">Safe Mode</span>
+          <label class="toggle"><input type="checkbox" id="safe-toggle" onchange="App.setSafe(this.checked)"><span class="tog-slider"></span></label>
+        </div>
+        <div class="toggle-row">
+          <span class="toggle-label">Calm Mode <kbd>C</kbd></span>
+          <label class="toggle"><input type="checkbox" id="calm-toggle" onchange="App.setCalm(this.checked)"><span class="tog-slider"></span></label>
+        </div>
+        <div class="toggle-row">
+          <span class="toggle-label">Toxic Filter</span>
+          <label class="toggle"><input type="checkbox" id="toxic-toggle" checked onchange="App.setToxic(this.checked)"><span class="tog-slider"></span></label>
+        </div>
+        <div class="toggle-row">
+          <span class="toggle-label">Profanity Bleep</span>
+          <label class="toggle"><input type="checkbox" id="bleep-toggle" onchange="App.setBleep(this.checked)"><span class="tog-slider"></span></label>
+        </div>
+        <div class="toggle-row">
+          <span class="toggle-label">Voice Commands</span>
+          <label class="toggle"><input type="checkbox" id="vc-toggle" onchange="App.setVoiceCommands(this.checked)"><span class="tog-slider"></span></label>
+        </div>
+      </div>
+
+      <div class="panel-section">
+        <button class="ctrl-btn" id="sim-btn" onclick="Sim.toggle()">▶ Start Simulation</button>
+        <button class="ctrl-btn" onclick="App.skip()">⏭ Skip <kbd>S</kbd></button>
+        <button class="ctrl-btn" onclick="App.repeatLast()">↩ Repeat <kbd>R</kbd></button>
+        <button class="ctrl-btn" onclick="App.readStats()">📊 Read Stats</button>
+        <button class="ctrl-btn" onclick="App.waterBreak()">💧 Water Break</button>
+        <button class="ctrl-btn danger" onclick="App.endStream()">🔴 End Stream</button>
+      </div>
+
+      <div class="panel-section">
+        <div class="section-title">Hotkeys</div>
+        <div class="hotkey-grid">
+          <kbd>M</kbd> Mute &nbsp; <kbd>S</kbd> Skip<br>
+          <kbd>R</kbd> Repeat &nbsp; <kbd>P</kbd> Panic<br>
+          <kbd>Q</kbd> Q&amp;A &nbsp; <kbd>C</kbd> Calm
+        </div>
+      </div>
+
+    </aside>
+  </main>
+
+  <!-- BOTTOM TABS -->
+  <footer id="bottombar" role="contentinfo">
+    <div class="tab-bar" role="tablist">
+      <button class="tab active" role="tab" id="tab-test"      onclick="UI.tab('test')">Test</button>
+      <button class="tab"        role="tab" id="tab-settings"  onclick="UI.tab('settings')">Settings</button>
+      <button class="tab"        role="tab" id="tab-games"     onclick="UI.tab('games')">Games</button>
+      <button class="tab"        role="tab" id="tab-nicknames" onclick="UI.tab('nicknames')">Nicknames</button>
+      <button class="tab"        role="tab" id="tab-keywords"  onclick="UI.tab('keywords')">Keywords</button>
+    </div>
+
+    <!-- TEST TAB -->
+    <div class="tab-pane active" id="tp-test" role="tabpanel">
+      <div class="btn-grid">
+        <button class="tbtn"         onclick="Test.comment()">💬 Comment</button>
+        <button class="tbtn"         onclick="Test.question()">❓ Question</button>
+        <button class="tbtn gold"    onclick="Test.giftSmall()">🎁 Small Gift</button>
+        <button class="tbtn gold"    onclick="Test.giftMedium()">💝 Medium Gift</button>
+        <button class="tbtn gold"    onclick="Test.giftLarge()">🏆 Large Gift</button>
+        <button class="tbtn blue"    onclick="Test.follow()">➕ Follow</button>
+        <button class="tbtn blue"    onclick="Test.share()">📤 Share</button>
+        <button class="tbtn purple"  onclick="Test.milestone()">🎉 Milestone</button>
+        <button class="tbtn red"     onclick="Test.alert()">⚠ Alert</button>
+        <button class="tbtn gold"    onclick="Test.streak()">🔥 Gift Streak</button>
+        <button class="tbtn blue"    onclick="Test.returnViewer()">👋 Return Viewer</button>
+        <button class="tbtn purple"  onclick="Test.giftStorm()">⛈ Gift Storm</button>
+        <button class="tbtn"         onclick="App.preStreamChecklist()">✅ Pre-Stream Check</button>
+        <button class="tbtn red"     onclick="App.panic()">⚠ Test Panic</button>
+      </div>
+    </div>
+
+    <!-- SETTINGS TAB -->
+    <div class="tab-pane" id="tp-settings" role="tabpanel">
+      <div class="settings-grid">
+        <div class="settings-group">
+          <div class="sg-title">Reminders (minutes)</div>
+          <label class="set-row">Water break <input type="number" class="mini-in" id="set-water" value="20" min="1" max="120" onchange="Settings.save()"></label>
+          <label class="set-row">Follow nudge <input type="number" class="mini-in" id="set-follow-nudge" value="15" min="1" max="120" onchange="Settings.save()"></label>
+          <label class="set-row">Socials nudge <input type="number" class="mini-in" id="set-socials" value="25" min="1" max="120" onchange="Settings.save()"></label>
+          <label class="set-row">Posture check <input type="number" class="mini-in" id="set-posture" value="45" min="1" max="120" onchange="Settings.save()"></label>
+          <label class="set-row">Viewer count <input type="number" class="mini-in" id="set-viewers-timer" value="5" min="1" max="30" onchange="Settings.save()"></label>
+          <label class="set-row">Earnings report <input type="number" class="mini-in" id="set-earnings" value="10" min="1" max="60" onchange="Settings.save()"></label>
+        </div>
+        <div class="settings-group">
+          <div class="sg-title">Gift Thresholds (coins)</div>
+          <label class="set-row">Small gift <input type="number" class="mini-in" id="set-small" value="100" onchange="Settings.save()"></label>
+          <label class="set-row">Medium gift <input type="number" class="mini-in" id="set-medium" value="1000" onchange="Settings.save()"></label>
+          <label class="set-row">Large gift <input type="number" class="mini-in" id="set-large" value="5000" onchange="Settings.save()"></label>
+          <div class="sg-title" style="margin-top:8px">Gift Goal (coins)</div>
+          <input type="number" class="mini-in" id="set-goal" value="1000" style="width:100%" onchange="Settings.saveGoal()">
+        </div>
+        <div class="settings-group">
+          <div class="sg-title">Enable Events</div>
+          <label class="set-row">Comments   <input type="checkbox" id="en-comments" checked onchange="Settings.save()"></label>
+          <label class="set-row">Questions  <input type="checkbox" id="en-questions" checked onchange="Settings.save()"></label>
+          <label class="set-row">Follows    <input type="checkbox" id="en-follows" checked onchange="Settings.save()"></label>
+          <label class="set-row">Gifts      <input type="checkbox" id="en-gifts" checked onchange="Settings.save()"></label>
+          <label class="set-row">Shares     <input type="checkbox" id="en-shares" checked onchange="Settings.save()"></label>
+          <label class="set-row">Milestones <input type="checkbox" id="en-milestones" checked onchange="Settings.save()"></label>
+          <label class="set-row">Reminders  <input type="checkbox" id="en-reminders" checked onchange="Settings.save()"></label>
+        </div>
+        <div class="settings-group">
+          <div class="sg-title">Streamer Name</div>
+          <input type="text" class="mini-in" id="set-name" value="Streamer" style="width:100%" onchange="Settings.save()">
+          <div class="sg-title" style="margin-top:8px">Wake Word</div>
+          <input type="text" class="mini-in" id="set-wakeword" value="hey stream" style="width:100%" onchange="Settings.save()">
+          <div style="margin-top:10px;display:flex;flex-direction:column;gap:6px">
+            <button class="ctrl-btn" onclick="Settings.reset()">Reset All Settings</button>
+            <button class="ctrl-btn" onclick="Wizard.start()">Redo Setup Wizard</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- GAMES TAB -->
+    <div class="tab-pane" id="tp-games" role="tabpanel">
+      <div class="btn-grid">
+        <button class="tbtn" onclick="Games.poll()">📊 Yes/No Poll</button>
+        <button class="tbtn" onclick="Games.firstToType()">⌨ First To Type</button>
+        <button class="tbtn" onclick="Games.startGiveaway()">🎁 Start Giveaway</button>
+        <button class="tbtn" onclick="Games.pickWinner()">🏆 Pick Winner</button>
+        <button class="tbtn" onclick="Games.wheel()">🎡 Wheel Spin</button>
+        <button class="tbtn" onclick="Games.countdown()">⏱ Countdown</button>
+        <button class="tbtn red" onclick="Games.stop()">🛑 Stop Game</button>
+      </div>
+      <div class="game-status" id="game-status">No active game</div>
+    </div>
+
+    <!-- NICKNAMES TAB -->
+    <div class="tab-pane" id="tp-nicknames" role="tabpanel">
+      <div class="kv-form">
+        <input type="text" class="kv-input" id="nick-user" placeholder="TikTok username" aria-label="Username">
+        <input type="text" class="kv-input flex" id="nick-greeting" placeholder="Custom greeting when they appear" aria-label="Greeting">
+        <button class="kv-btn" onclick="Nicknames.add()">Add</button>
+      </div>
+      <div class="tag-list" id="nicknames-list"></div>
+    </div>
+
+    <!-- KEYWORDS TAB -->
+    <div class="tab-pane" id="tp-keywords" role="tabpanel">
+      <div class="kv-form">
+        <input type="text" class="kv-input" id="kw-trigger" placeholder="Trigger word or phrase" aria-label="Trigger">
+        <input type="text" class="kv-input flex" id="kw-response" placeholder="Announcer response" aria-label="Response">
+        <button class="kv-btn" onclick="Keywords.add()">Add</button>
+      </div>
+      <div class="tag-list" id="keywords-list"></div>
+    </div>
+
+  </footer>
+
+</div><!-- /app -->
+
+<script src="/socket.io/socket.io.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
