@@ -1,0 +1,18 @@
+{
+  "name": "tiktok-announcer",
+  "version": "1.0.0",
+  "description": "Accessibility-first TikTok Live Announcer",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "4.18.2",
+    "socket.io": "4.7.2",
+    "piratetok-live-js": "latest"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "license": "MIT"
+}
