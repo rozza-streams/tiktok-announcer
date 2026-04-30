@@ -670,46 +670,32 @@ const DiamondGlow = {
   },
 
   async _check(renderId) {
-    // Mark all as checking
     DIAMOND_GLOW.forEach(m => this.liveStatus[m.handle] = 'checking');
     this.render(renderId);
 
-    // Check each member individually using TikTok's oEmbed API
-    // This works from the browser without CORS issues
+    // Check each member using TikTok oEmbed API
+    // oEmbed returns data for live streams — if it returns a valid title
+    // containing "LIVE" or similar, the user is live
     const checks = DIAMOND_GLOW.map(async m => {
       try {
-        // Try TikTok's public profile check via a no-cors image ping
-        // and oEmbed for live status
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 5000);
-        
         const res = await fetch(
           `https://www.tiktok.com/oembed?url=https://www.tiktok.com/@${m.handle}/live`,
-          { signal: controller.signal, mode: 'no-cors' }
+          { mode: 'cors' }
         );
-        clearTimeout(timeout);
-        // no-cors means we get an opaque response — if it didn't throw, the URL exists
-        // We treat a successful fetch as potentially live
-        this.liveStatus[m.handle] = true;
-      } catch(e) {
-        if (e.name === 'AbortError') {
-          this.liveStatus[m.handle] = false;
+        if (res.ok) {
+          const data = await res.json();
+          // If oEmbed returns a title with LIVE in it or a valid live URL, they are live
+          const title = (data.title || '').toLowerCase();
+          const authorUrl = (data.author_url || '').toLowerCase();
+          const isLive = title.includes('live') || 
+                        (data.html && data.html.includes('live')) ||
+                        res.url.includes('live');
+          this.liveStatus[m.handle] = isLive;
         } else {
-          // Network error or blocked — try fallback
-          try {
-            // Fallback: use image ping to check if profile exists
-            await new Promise((resolve, reject) => {
-              const img = new Image();
-              img.onload = () => resolve(true);
-              img.onerror = () => reject(false);
-              img.src = `https://www.tiktok.com/@${m.handle}/live?t=${Date.now()}`;
-              setTimeout(() => reject(false), 4000);
-            });
-            this.liveStatus[m.handle] = true;
-          } catch(_) {
-            this.liveStatus[m.handle] = false;
-          }
+          this.liveStatus[m.handle] = false;
         }
+      } catch(_) {
+        this.liveStatus[m.handle] = false;
       }
     });
 
@@ -1057,12 +1043,10 @@ const TikTok={
   selectMember(handle){el('modal-username').value=handle;el('modal-username').focus();},
   connect(){
     const username=el('modal-username').value.trim().replace('@','');
-    const sessionId=el('modal-session').value.trim();
     if(!username){el('modal-err').textContent='Please enter a username.';return;}
     el('modal-err').textContent='Connecting...';
-    if(sessionId) localStorage.setItem('tla-sessionid',sessionId);
     this.saveUsername(username);
-    socket.emit('connect-tiktok',{username,sessionId});
+    socket.emit('connect-tiktok',{username});
   },
   saveUsername(u){
     let saved=JSON.parse(localStorage.getItem('tla-saved-users')||'[]');
