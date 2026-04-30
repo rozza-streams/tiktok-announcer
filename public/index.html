@@ -190,17 +190,12 @@
     <!-- VOICE SELECTION -->
     <div class="sp-section">
       <div class="sp-section-title">🎙 Voice Selection</div>
-      <p class="sp-desc">Choose your announcer voice. Stars (★) are high quality local voices.</p>
+      <p class="sp-desc">Choose your announcer voice. Stars (★) are the highest quality voices. The app automatically picks the best one available on your device — you can change it here if you prefer a different one.</p>
       <div class="voice-select-row">
         <select class="sp-select" id="voice-select" onchange="VoicePicker.preview()" style="flex:1"></select>
         <button class="sp-btn-sm" onclick="VoicePicker.preview()">▶ Preview</button>
       </div>
-      <div class="sp-divider">ElevenLabs API Key <span class="sp-badge">Free tier: 10k chars/month</span></div>
-      <input type="password" class="sp-input" id="el-key" placeholder="Paste your ElevenLabs API key here" onchange="VoicePicker.saveKeys()">
-      <div class="sp-divider">PlayHT API Key <span class="sp-badge">Free tier available</span></div>
-      <input type="password" class="sp-input" id="ph-key" placeholder="PlayHT API key" onchange="VoicePicker.saveKeys()">
-      <input type="text" class="sp-input" id="ph-user" placeholder="PlayHT User ID" onchange="VoicePicker.saveKeys()" style="margin-top:6px">
-      <p class="sp-desc" style="margin-top:6px">Get free ElevenLabs key at <strong>elevenlabs.io</strong> — Get free PlayHT key at <strong>play.ht</strong></p>
+      <p class="sp-desc" style="margin-top:.75rem">💡 <strong>Tip:</strong> For the best quality voices open this app in <strong>Microsoft Edge</strong> — it includes free high quality neural voices like Ryan, Sonia and Libby that sound very natural.</p>
     </div>
 
     <!-- GIFT LIBRARY -->
