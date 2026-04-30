@@ -843,48 +843,79 @@ const Events = {
     UI.log('like',username,`❤ Liked`,'❤');
   },
 
-  gift(username,giftName,coins,emoji,repeatCount){
-    if(!en('en-gifts'))return;
-    S.coinsTonight+=coins; S.giftsTonight++;
-    if(el('s-coins'))el('s-coins').textContent=S.coinsTonight.toLocaleString();
-    if(el('tb-coins'))el('tb-coins').textContent=S.coinsTonight.toLocaleString();
-    if(el('s-gifts'))el('s-gifts').textContent=S.giftsTonight;
+  // ══════════════════════════════════════════════════════════
+  // THE NEW DEBOUNCED GIFT FIX
+  // ══════════════════════════════════════════════════════════
+  gift(username, giftName, coins, emoji, repeatCount) {
+    if(!en('en-gifts')) return;
 
-    S.giftCounts[username]=(S.giftCounts[username]||0)+coins;
-    if(S.giftCounts[username]>S.topGifterCoins){S.topGifterCoins=S.giftCounts[username];S.topGifter=username;if(el('top-gifter'))el('top-gifter').textContent=`${username} (${S.topGifterCoins.toLocaleString()} coins)`;}
-
-    const prev=S.giftStreaks[username];
-    if(prev&&prev.gift===giftName){prev.count++;clearTimeout(S.giftStreakTimers[username]);}
-    else S.giftStreaks[username]={gift:giftName,count:repeatCount||1};
-    S.giftStreakTimers[username]=setTimeout(()=>delete S.giftStreaks[username],10000);
-    const streak=S.giftStreaks[username].count;
-
-    S.giftGoalProgress+=coins;
-    this.checkGoal(); Settings.updateGoal();
-
-    const small=+g('set-small')||100, medium=+g('set-medium')||1000, large=+g('set-large')||5000;
-    const size=coins>=large?'large':coins>=medium?'medium':'small';
-
-    const gid=giftName.toLowerCase().replace(/[^a-z0-9]/g,'_');
+    const gid = giftName.toLowerCase().replace(/[^a-z0-9]/g,'_');
     if(!GiftLibrary.gifts.find(g=>g.id===gid||g.name.toLowerCase()===giftName.toLowerCase())){
       GiftLibrary.learnGift(giftName,coins,emoji||'🎁');
     }
 
-    const sound=GiftLibrary.getSound(gid,giftName,size);
-    let msg,priority,opts={};
-    if(size==='large'){
-      msg=streak>1?`Oh my goodness! ${username} is on a ${streak} times streak of ${giftName}! That is absolutely incredible!`:`Oh my goodness! ${username} just sent a ${giftName}! That is incredible, thank you so much!`;
-      priority=1;opts={pitch:.88,rate:S.speechRate*.9};
-      UI.flash('gold');setTimeout(()=>UI.flash('gold'),350);
-    }else if(size==='medium'){
-      msg=streak>1?`${username} is on a ${streak} streak of ${giftName}! Amazing!`:`Wow! ${username} sent a ${giftName}, thank you so much!`;
-      priority=2;opts={pitch:1.05};UI.flash('gold');
-    }else{
-      msg=streak>1?`${username} is on a ${streak} ${giftName} streak!`:`${username} sent a ${giftName}, thank you!`;
-      priority=4;
+    const streakKey = username + '_' + gid;
+
+    if (S.giftStreaks[streakKey]) {
+      // They kept tapping! Update the total amount they've sent
+      S.giftStreaks[streakKey].count = Math.max(S.giftStreaks[streakKey].count + 1, repeatCount || 1);
+      clearTimeout(S.giftStreakTimers[streakKey]);
+    } else {
+      // Brand new gift
+      S.giftStreaks[streakKey] = { name: giftName, count: repeatCount || 1, baseCoins: coins, emoji: emoji || '🎁' };
     }
-    Queue.add(msg,'gift',priority,sound,opts);
-    UI.log('gift',username,`${emoji||'🎁'} ${giftName} (${coins.toLocaleString()} coins)${streak>1?` — ${streak}× streak!`:''}`,emoji||'🎁');
+
+    // Wait exactly 2.5 seconds to see if they tap again. 
+    // If they do, the timer resets. If they don't, we announce the bundle!
+    S.giftStreakTimers[streakKey] = setTimeout(() => {
+      const data = S.giftStreaks[streakKey];
+      delete S.giftStreaks[streakKey]; // Clear out the streak so they can start a new one later
+
+      const totalCoins = data.count * data.baseCoins;
+
+      // Update the scoreboard stats now that the streak is done
+      S.coinsTonight += totalCoins; 
+      S.giftsTonight++;
+      if(el('s-coins')) el('s-coins').textContent=S.coinsTonight.toLocaleString();
+      if(el('tb-coins')) el('tb-coins').textContent=S.coinsTonight.toLocaleString();
+      if(el('s-gifts')) el('s-gifts').textContent=S.giftsTonight;
+
+      S.giftCounts[username]=(S.giftCounts[username]||0)+totalCoins;
+      if(S.giftCounts[username]>S.topGifterCoins){
+        S.topGifterCoins=S.giftCounts[username];
+        S.topGifter=username;
+        if(el('top-gifter')) el('top-gifter').textContent=`${username} (${S.topGifterCoins.toLocaleString()} coins)`;
+      }
+
+      S.giftGoalProgress += totalCoins;
+      this.checkGoal(); 
+      Settings.updateGoal();
+
+      const small=+g('set-small')||100, medium=+g('set-medium')||1000, large=+g('set-large')||5000;
+      const size = totalCoins >= large ? 'large' : totalCoins >= medium ? 'medium' : 'small';
+      const sound = GiftLibrary.getSound(gid, data.name, size);
+
+      let msg, priority, opts={};
+      
+      // Make it plural if there's more than one
+      const plural = data.count > 1 ? 's' : '';
+
+      if(size==='large'){
+        msg = data.count > 1 ? `Oh my goodness! Thank you ${username} for the ${data.count} ${data.name}${plural}! That is absolutely incredible!` : `Oh my goodness! Thank you ${username} for the ${data.name}! That is incredible, thank you so much!`;
+        priority=1;opts={pitch:.88,rate:S.speechRate*.9};
+        UI.flash('gold');setTimeout(()=>UI.flash('gold'),350);
+      }else if(size==='medium'){
+        msg = data.count > 1 ? `Wow! Thank you ${username} for the ${data.count} ${data.name}${plural}!` : `Wow! Thank you ${username} for the ${data.name}!`;
+        priority=2;opts={pitch:1.05};UI.flash('gold');
+      }else{
+        msg = data.count > 1 ? `Thank you ${username} for the ${data.count} ${data.name}${plural}!` : `Thank you ${username} for the ${data.name}!`;
+        priority=4;
+      }
+
+      Queue.add(msg, 'gift', priority, sound, opts);
+      UI.log('gift', username, `${data.emoji} ${data.name} ${data.count > 1 ? `×${data.count}` : ''} (${totalCoins.toLocaleString()} coins)`, data.emoji);
+
+    }, 2500); 
   },
 
   share(username){
@@ -1086,7 +1117,6 @@ const TikTok = {
       try {
         const data = JSON.parse(raw.data);
         
-        // Find every message, no matter how the API decides to nest it
         let messages = [];
         if (Array.isArray(data)) messages = data;
         else if (Array.isArray(data.messages)) messages = data.messages;
@@ -1147,14 +1177,10 @@ const TikTok = {
   handleMessage(rawMsg, username) {
     if (!rawMsg) return;
     
-    // 1. Unwrap the envelope
     const msg = rawMsg.data || rawMsg.message || rawMsg.eventData || rawMsg.payload || rawMsg;
-    
-    // 2. Identify the Event Type
     let type = rawMsg.type || rawMsg.event || rawMsg.eventName || rawMsg.name || msg.type || msg.event || msg.name;
     if (!type) return;
     
-    // 3. Normalize short-hand event names
     const t = type.toLowerCase();
     if (t.includes('chat')) type = 'WebcastChatMessage';
     else if (t.includes('gift')) type = 'WebcastGiftMessage';
@@ -1164,11 +1190,9 @@ const TikTok = {
     else if (t.includes('roomuser') || t.includes('viewer')) type = 'WebcastRoomUserSeqMessage';
     else if (t.includes('sub')) type = 'WebcastSubNotifyMessage';
 
-    // 4. Dig through everything to find User Info
     const userNode = msg.user || msg.author || msg.userDetails || msg.sender || msg;
     const user = userNode.nickname || userNode.uniqueId || userNode.displayId || msg.nickname || msg.uniqueId || 'Someone';
 
-    // Mark as connected on first room message
     if (!S.tiktokConnected && (
       type === 'WebcastRoomUserSeqMessage' ||
       type === 'WebcastChatMessage' ||
@@ -1188,7 +1212,6 @@ const TikTok = {
       UI.log('system','TikTok',`Connected to @${username}`,'✅');
     }
 
-    // 5. Route the Data
     switch(type) {
       case 'WebcastChatMessage': {
         const text = msg.comment || msg.content || msg.text || msg.msg || '';
@@ -1197,15 +1220,12 @@ const TikTok = {
       }
       
       case 'WebcastGiftMessage': {
-        if (msg.repeatEnd !== false) {
-          // Dig aggressively through the data to find gift details
-          const giftNode = msg.gift || msg.giftDetails || msg.gift_info || msg;
-          const giftName = msg.giftName || giftNode.name || giftNode.giftName || giftNode.gift_name || giftNode.describe || 'Gift';
-          const coins = msg.diamondCount || msg.diamond_count || giftNode.diamondCount || giftNode.diamond_count || giftNode.coinCount || 0;
-          const repeatCount = msg.repeatCount || msg.repeat_count || giftNode.repeatCount || 1;
-          
-          Events.gift(user, giftName, coins, '🎁', repeatCount);
-        }
+        const giftNode = msg.gift || msg.giftDetails || msg.gift_info || msg;
+        const giftName = msg.giftName || giftNode.name || giftNode.giftName || giftNode.gift_name || giftNode.describe || 'Gift';
+        const coins = msg.diamondCount || msg.diamond_count || giftNode.diamondCount || giftNode.diamond_count || giftNode.coinCount || 0;
+        const repeatCount = msg.repeatCount || msg.repeat_count || giftNode.repeatCount || 1;
+        
+        Events.gift(user, giftName, coins, '🎁', repeatCount);
         break;
       }
       
