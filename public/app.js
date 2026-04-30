@@ -1136,17 +1136,17 @@ const TikTok = {
     };
   },
 
-  handleMessage(msg, username) {
-    if (!msg) return;
+  handleMessage(rawMsg, username) {
+    if (!rawMsg) return;
     
-    // Unwrap nested EulerStream payloads if needed
-    if (msg.data && msg.data.type) msg = msg.data;
-    if (msg.event && msg.event.type) msg = msg.event;
-    
-    const type = msg.type;
+    // First, identify the type (usually at the root of the event)
+    const type = rawMsg.type || rawMsg.event;
     if (!type) return;
     
-    // Bulletproof Username Extraction - catch it anywhere it hides
+    // EulerStream often puts the actual TikTok payload inside a "data" property
+    const msg = rawMsg.data || rawMsg.event || rawMsg;
+    
+    // Bulletproof Username Extraction - checking everywhere it could hide
     let user = 'Someone';
     if (msg.user) user = msg.user.nickname || msg.user.uniqueId || msg.user.displayId || 'Someone';
     else if (msg.author) user = msg.author.nickname || msg.author.uniqueId || msg.author.displayId || 'Someone';
@@ -1175,13 +1175,14 @@ const TikTok = {
 
     switch(type) {
       case 'WebcastChatMessage':
-        // Bulletproof Comment Extraction - catch it anywhere it hides
+        // Bulletproof Comment Extraction
         const text = msg.comment || msg.content || msg.text || msg.msg || '';
         Events.comment(user, text);
         break;
 
       case 'WebcastGiftMessage':
         if (msg.repeatEnd !== false) {
+          // Bulletproof Gift Extraction
           const giftName = msg.giftName || msg.gift?.name || msg.gift?.describe || 'Gift';
           const coins = msg.diamondCount || msg.gift?.diamondCount || msg.gift?.coinCount || 0;
           Events.gift(user, giftName, coins, '🎁', msg.repeatCount || 1);
