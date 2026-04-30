@@ -52,6 +52,10 @@
       <div class="tb-stat"><span class="tb-num" id="tb-queue">0</span><span class="tb-lbl">Queue</span></div>
     </div>
     <div class="tb-right">
+      <div class="reconnect-badge hidden" id="reconnect-badge" role="status" aria-live="polite">
+        <span class="rb-spin"></span>
+        <span id="reconnect-label">Reconnecting…</span>
+      </div>
       <div class="voice-pill" id="voice-pill">
         <span class="voice-dot" id="voice-dot"></span>
         <span id="voice-label">MIC OFF</span>
@@ -368,3 +372,4 @@
 <script src="app.js"></script>
 </body>
 </html>
+
