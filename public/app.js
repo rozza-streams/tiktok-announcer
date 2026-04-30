@@ -147,7 +147,6 @@ const Audio = {
   play(name) {
     if (!name||name==='None') return;
     if (SOUNDS[name]) { this.playPreset(SOUNDS[name]); return; }
-    // Try as URL
     try {
       this.init();
       fetch(name).then(r=>r.arrayBuffer()).then(buf=>S.audioCtx.decodeAudioData(buf)).then(decoded=>{
@@ -167,11 +166,9 @@ const Audio = {
 const Speech = {
   voices:[],
   loadVoices() {
-    // English voices only — sorted by quality (local/neural first)
     this.voices = speechSynthesis.getVoices()
       .filter(v => v.lang.startsWith('en'))
       .sort((a,b) => {
-        // Local (higher quality) voices first
         if(a.localService && !b.localService) return -1;
         if(!a.localService && b.localService) return 1;
         return a.name.localeCompare(b.name);
@@ -184,7 +181,6 @@ const Speech = {
       return `<option value="${i}" ${saved===v.name?'selected':''}>${v.name} — ${v.lang}${star}</option>`;
     }).join('');
 
-    // Try to restore saved voice
     const savedIdx=this.voices.findIndex(v=>v.name===saved);
     if(savedIdx>=0){
       sel.value=savedIdx;
@@ -192,31 +188,22 @@ const Speech = {
       return;
     }
 
-    // Auto-select best quality voice — priority order
     const preferred = [
-      // Microsoft Edge neural voices (highest quality, free)
       'Microsoft Ryan Online','Microsoft Sonia Online','Microsoft Libby Online',
       'Microsoft Aria Online','Microsoft Guy Online','Microsoft Jenny Online',
       'Microsoft Emma Online','Microsoft Brian Online','Microsoft Andrew Online',
-      // Apple voices
       'Samantha','Daniel','Karen','Moira','Tessa',
-      // Google voices
       'Google UK English Female','Google UK English Male',
       'Google US English','Google US English 2',
-      // Any local English voice
     ];
 
     let best = null;
-    // First try preferred list in order
     for (const name of preferred) {
       const v = this.voices.find(v => v.name.includes(name));
       if (v) { best = v; break; }
     }
-    // Fall back to any local English voice
     if (!best) best = this.voices.find(v => v.localService && v.lang.startsWith('en'));
-    // Fall back to any English voice
     if (!best) best = this.voices.find(v => v.lang.startsWith('en'));
-    // Last resort — first available
     if (!best && this.voices.length) best = this.voices[0];
 
     if (best) {
@@ -230,17 +217,14 @@ const Speech = {
   async speak(text, opts={}) {
     const vol = Math.min(1.0, opts.volume!==undefined ? opts.volume : S.voiceVolume);
     const rate = opts.rate!==undefined ? opts.rate : S.speechRate;
-    // Try ElevenLabs first if key is set
     if (S.elevenLabsKey && S.elevenLabsVoiceId && S.ttsProvider==='elevenlabs') {
       const ok = await this.elevenLabsSpeak(text, opts);
       if (ok) return;
     }
-    // Try PlayHT
     if (S.playHTKey && S.playHTVoiceId && S.ttsProvider==='playht') {
       const ok = await this.playHTSpeak(text, opts);
       if (ok) return;
     }
-    // Fall back to browser
     this.browserSpeak(text, {rate, volume:vol, pitch:opts.pitch||1.0, onend:opts.onend});
   },
 
@@ -409,7 +393,7 @@ const VoiceCmd = {
       const t=e.results[e.results.length-1][0].transcript.toLowerCase().trim();
       this.handle(t);
     };
-    this.rec.onerror=e=>{if(e.error!=='no-speech'){S.vcEnabled=false;el('vc-toggle').checked=false;UI.updateVoice();}};
+    this.rec.onerror=e=>{if(e.error!=='no-speech'){S.vcEnabled=false;if(el('vc-toggle'))el('vc-toggle').checked=false;UI.updateVoice();}};
     this.rec.onend=()=>{if(S.vcEnabled){try{this.rec.start();}catch(_){}}};
     return true;
   },
@@ -445,30 +429,29 @@ const VoiceCmd = {
 
   activate() {
     this.state='activated';
-    el('vc-dot').className='vc-dot listening';
-    el('vc-status').textContent='Listening for your command...';
+    if(el('vc-dot'))el('vc-dot').className='vc-dot listening';
+    if(el('vc-status'))el('vc-status').textContent='Listening for your command...';
     Audio.playActivation();
     setTimeout(()=>{
       Speech.browserSpeak("What would you like me to do?",{rate:1.0,volume:1.0,onend:()=>{
         this.state='listening';
-        el('vc-status').textContent='Speak your command now...';
+        if(el('vc-status'))el('vc-status').textContent='Speak your command now...';
       }});
     },400);
   },
 
   confirm(cmd) {
     this.state='confirming';
-    el('vc-dot').className='vc-dot confirming';
-    el('vc-status').textContent=`Heard: "${cmd}" — say Yes or No`;
+    if(el('vc-dot'))el('vc-dot').className='vc-dot confirming';
+    if(el('vc-status'))el('vc-status').textContent=`Heard: "${cmd}" — say Yes or No`;
     Speech.browserSpeak(`I heard: ${cmd}. Is that what you want me to do?`,{rate:1.0,volume:1.0});
   },
 
   execute() {
     this.state='idle';
-    el('vc-dot').className='vc-dot listening';
-    el('vc-status').textContent='Say "LiveAnnouncer" to give a voice command';
+    if(el('vc-dot'))el('vc-dot').className='vc-dot listening';
+    if(el('vc-status'))el('vc-status').textContent='Say "LiveAnnouncer" to give a voice command';
     const cmd=this.pendingCmd;
-    // Find matching command
     const match=Object.keys(this.COMMANDS).find(k=>cmd.includes(k));
     if (match) {
       Speech.browserSpeak('Done.',{rate:1.0,volume:1.0});
@@ -488,8 +471,8 @@ const VoiceCmd = {
 
   cancel() {
     this.state='idle';
-    el('vc-dot').className='vc-dot listening';
-    el('vc-status').textContent='Say "LiveAnnouncer" to give a voice command';
+    if(el('vc-dot'))el('vc-dot').className='vc-dot listening';
+    if(el('vc-status'))el('vc-status').textContent='Say "LiveAnnouncer" to give a voice command';
     Speech.browserSpeak("OK, cancelled.",{rate:1.0,volume:1.0});
   }
 };
@@ -532,7 +515,6 @@ const SoundManager = {
         <button class="esound-test" onclick="Audio.play(SoundManager.get('${ev.key}'))">▶ Test</button>
       </div>`;
     }).join('');
-    // Set current values
     events.forEach(ev=>{
       const sel=el(`esnd-${ev.key}`);
       if(sel) sel.value=this.config[ev.key]||this.defaults[ev.key]||'None';
@@ -611,11 +593,9 @@ const DiamondGlow = {
   autoCheckInterval: null,
 
   init() {
-    // Auto check every 30 seconds when modal is open or settings are open
     this.autoCheckInterval = setInterval(() => {
-      // Only auto-check if the modal or settings panel is visible
-      const modalVisible = !el('connect-modal').classList.contains('hidden');
-      const settingsVisible = el('settings-panel').classList.contains('open');
+      const modalVisible = el('connect-modal') && !el('connect-modal').classList.contains('hidden');
+      const settingsVisible = el('settings-panel') && el('settings-panel').classList.contains('open');
       if (modalVisible || settingsVisible) {
         this._check('dg-modal-list');
         this._check('dg-grid');
@@ -672,13 +652,11 @@ const DiamondGlow = {
     DIAMOND_GLOW.forEach(m => this.liveStatus[m.handle] = 'checking');
     this.render(renderId);
 
-    // Use EulerStream API if we have a key — most reliable
     const apiKey = localStorage.getItem('tla-euler-key') || '';
 
     const checks = DIAMOND_GLOW.map(async m => {
       try {
         if (apiKey) {
-          // TikTool REST API — checks if user is live
           const res = await fetch(
             `https://api.tik.tools/v1/is-live?uniqueId=${encodeURIComponent(m.handle)}&apiKey=${encodeURIComponent(apiKey)}`,
             { signal: AbortSignal.timeout(6000) }
@@ -689,7 +667,6 @@ const DiamondGlow = {
             return;
           }
         }
-        // Fallback — allorigins CORS proxy
         const url = `https://api.allorigins.win/get?url=${encodeURIComponent(`https://www.tiktok.com/@${m.handle}/live`)}`;
         const res2 = await fetch(url, { signal: AbortSignal.timeout(8000) });
         if (res2.ok) {
@@ -707,7 +684,6 @@ const DiamondGlow = {
       }
     });
 
-    // Check in batches of 4 to avoid hammering APIs
     for (let i = 0; i < DIAMOND_GLOW.length; i += 4) {
       await Promise.all(checks.slice(i, i + 4));
     }
@@ -722,21 +698,21 @@ const Settings = {
   load() {
     try {
       const d=JSON.parse(localStorage.getItem('tla-v6')||'{}');
-      if(d.name)        el('set-name').value=d.name;
-      if(d.wakeWord)    el('set-wakeword').value=d.wakeWord;
-      if(d.water)       el('set-water').value=d.water;
-      if(d.followNudge) el('set-follow-nudge').value=d.followNudge;
-      if(d.socials)     el('set-socials').value=d.socials;
-      if(d.posture)     el('set-posture').value=d.posture;
-      if(d.viewerT)     el('set-viewers-timer').value=d.viewerT;
-      if(d.earnings)    el('set-earnings').value=d.earnings;
-      if(d.goal)        {el('set-goal').value=d.goal;S.giftGoal=+d.goal;}
-      if(d.small)       el('set-small').value=d.small;
-      if(d.medium)      el('set-medium').value=d.medium;
-      if(d.large)       el('set-large').value=d.large;
-      if(d.rate)        App.setRate(d.rate);
-      if(d.vol!=null)   App.setVolume(d.vol*100);
-      if(d.sfx!=null)   App.setSfxVolume(d.sfx*100);
+      if(d.name && el('set-name')) el('set-name').value=d.name;
+      if(d.wakeWord && el('set-wakeword')) el('set-wakeword').value=d.wakeWord;
+      if(d.water && el('set-water')) el('set-water').value=d.water;
+      if(d.followNudge && el('set-follow-nudge')) el('set-follow-nudge').value=d.followNudge;
+      if(d.socials && el('set-socials')) el('set-socials').value=d.socials;
+      if(d.posture && el('set-posture')) el('set-posture').value=d.posture;
+      if(d.viewerT && el('set-viewers-timer')) el('set-viewers-timer').value=d.viewerT;
+      if(d.earnings && el('set-earnings')) el('set-earnings').value=d.earnings;
+      if(d.goal && el('set-goal')) {el('set-goal').value=d.goal;S.giftGoal=+d.goal;}
+      if(d.small && el('set-small')) el('set-small').value=d.small;
+      if(d.medium && el('set-medium')) el('set-medium').value=d.medium;
+      if(d.large && el('set-large')) el('set-large').value=d.large;
+      if(d.rate) App.setRate(d.rate);
+      if(d.vol!=null) App.setVolume(d.vol*100);
+      if(d.sfx!=null) App.setSfxVolume(d.sfx*100);
     }catch(_){}
     Nicknames.load(); Keywords.load(); Loyalty.load();
     SoundManager.load(); GiftLibrary.load();
@@ -755,11 +731,11 @@ const Settings = {
   },
   saveGoal(){S.giftGoal=+g('set-goal')||1000;this.save();this.updateGoal();},
   updateGoal(){
-    if(!S.giftGoal){el('goal-label').textContent='Set a goal in Settings';el('goal-pct').textContent='';el('goal-fill').style.width='0%';return;}
+    if(!S.giftGoal){if(el('goal-label'))el('goal-label').textContent='Set a goal in Settings';if(el('goal-pct'))el('goal-pct').textContent='';if(el('goal-fill'))el('goal-fill').style.width='0%';return;}
     const pct=Math.min(100,Math.round((S.giftGoalProgress/S.giftGoal)*100));
-    el('goal-label').textContent=`${S.giftGoalProgress.toLocaleString()} / ${S.giftGoal.toLocaleString()} coins`;
-    el('goal-fill').style.width=pct+'%';
-    el('goal-pct').textContent=pct+'%';
+    if(el('goal-label'))el('goal-label').textContent=`${S.giftGoalProgress.toLocaleString()} / ${S.giftGoal.toLocaleString()} coins`;
+    if(el('goal-fill'))el('goal-fill').style.width=pct+'%';
+    if(el('goal-pct'))el('goal-pct').textContent=pct+'%';
   },
   reset(){if(!confirm('Reset ALL settings?'))return;['tla-v6','tla-wizard','tla-nicks','tla-kw','tla-loyalty','tla-sounds-v3','tla-gift-sounds-v2','tla-voice','tla-sessionid','tla-elkey','tla-phkey','tla-phuser','tla-saved-users'].forEach(k=>localStorage.removeItem(k));location.reload();}
 };
@@ -770,7 +746,7 @@ const Settings = {
 const Events = {
   async comment(username, rawText) {
     S.commentsTonight++;
-    el('s-comments')&&(el('s-comments').textContent=S.commentsTonight);
+    if(el('s-comments')) el('s-comments').textContent=S.commentsTonight;
 
     if(S.toxicFilter&&TOXIC_WORDS.some(w=>rawText.toLowerCase().includes(w))){
       UI.log('system',username,'Skipped: inappropriate comment','🚫');return;
@@ -778,64 +754,52 @@ const Events = {
     let text=rawText;
     if(S.bleepProfanity) PROFANITY.forEach(w=>{text=text.replace(new RegExp(w,'gi'),'****');});
 
-    // Spam filter
     const key=text.toLowerCase().trim().slice(0,40);
     S.spamTracker[key]=(S.spamTracker[key]||0)+1;
     if(S.spamTracker[key]>3) return;
     setTimeout(()=>delete S.spamTracker[key],25000);
 
-    // Top commenter
     S.commentCounts[username]=(S.commentCounts[username]||0)+1;
-    if(S.commentCounts[username]>S.topCommenterCount){S.topCommenterCount=S.commentCounts[username];S.topCommenter=username;el('top-commenter').textContent=`${username} (${S.topCommenterCount})`;}
+    if(S.commentCounts[username]>S.topCommenterCount){S.topCommenterCount=S.commentCounts[username];S.topCommenter=username;if(el('top-commenter'))el('top-commenter').textContent=`${username} (${S.topCommenterCount})`;}
 
-    // Silence timer
     clearTimeout(S.silenceTimer);
     S.silenceTimer=setTimeout(()=>Queue.add('Chat has gone quiet — good time to ask your audience a question!','system',7),60000);
 
-    // Auto-translate
     const tr=await Translator.translate(text);
     const displayText=tr.translated;
-    const langNote=tr.wasTranslated?` (${tr.lang})`:' ';
 
-    // Keyword trigger
     const kwReply=Keywords.check(displayText.toLowerCase());
     if(kwReply){Queue.add(kwReply,'comment',5,SoundManager.get('comment'));UI.log('comment',username,rawText,'💬');return;}
 
-    // Nickname
     const nick=Nicknames.get(username);
     if(nick){Queue.add(nick,'comment',4,SoundManager.get('comment'));UI.log('comment',username,rawText,'👋');return;}
 
-    // First comment
     if(!S.firstCommentDone){
       S.firstCommentDone=true;
       Queue.add(`First comment tonight goes to ${username} — they say: ${displayText}`,'milestone',2,SoundManager.get('milestone'));
       UI.log('milestone',username,`FIRST: ${rawText}`,'⭐');UI.flash('green');return;
     }
 
-    // Question
     if(displayText.includes('?')&&en('en-questions')&&!S.safeMode){
       const msg=tr.wasTranslated?`Question in ${tr.lang} from ${username}: ${displayText}`:`Question from ${username}: ${displayText}`;
       Queue.add(msg,'question',3,SoundManager.get('comment'),{pitch:1.1});
       UI.log('question',username,rawText,'❓');return;
     }
 
-    // Shoutout
     if(/\bso\b/.test(displayText.toLowerCase())||displayText.toLowerCase().includes('shoutout')){
       Queue.add(`Shoutout request from ${username}!`,'comment',4,SoundManager.get('comment'));
       UI.log('comment',username,`Shoutout: ${rawText}`,'📢');return;
     }
 
-    // Poll / FTT / Giveaway
     if(S.pollActive){const l=displayText.toLowerCase().trim();if(l==='yes')S.pollResults.yes++;else if(l==='no')S.pollResults.no++;}
     if(S.fttActive&&S.fttWord&&displayText.toLowerCase().includes(S.fttWord.toLowerCase())){
       S.fttActive=false;
       Queue.add(`We have a winner! ${username} was first to type ${S.fttWord}!`,'milestone',1,SoundManager.get('milestone'));
-      UI.log('game',username,'Won First To Type!','🏆');el('game-status').textContent=`Winner: ${username}`;UI.flash('green');return;
+      UI.log('game',username,'Won First To Type!','🏆');if(el('game-status'))el('game-status').textContent=`Winner: ${username}`;UI.flash('green');return;
     }
     if(S.giveawayActive) S.giveawayEntrants.add(username);
     if(S.safeMode||S.qaMode||!en('en-comments')) return;
 
-    // Activity spike
     S.activitySpike.push(Date.now());
     S.activitySpike=S.activitySpike.filter(t=>Date.now()-t<5000);
     if(S.activitySpike.length>=8){S.activitySpike=[];Queue.add('Something just set chat off — that could be a highlight moment!','system',5);UI.log('system','System','📍 Highlight!','📍');}
@@ -850,8 +814,8 @@ const Events = {
   follow(username){
     if(!en('en-follows'))return;
     S.followsTonight++;
-    el('s-follows').textContent=S.followsTonight;
-    el('tb-follows').textContent=S.followsTonight;
+    if(el('s-follows'))el('s-follows').textContent=S.followsTonight;
+    if(el('tb-follows'))el('tb-follows').textContent=S.followsTonight;
     const hist=S.viewerHistory[username]||{visits:0};
     S.viewerHistory[username]={visits:hist.visits+1,lastSeen:Date.now()};
     Loyalty.check(username,hist.visits+1);
@@ -870,7 +834,7 @@ const Events = {
 
   like(username,count){
     S.likesTonight+=count||1;
-    el('s-likes').textContent=S.likesTonight;
+    if(el('s-likes'))el('s-likes').textContent=S.likesTonight;
     if(!en('en-likes')) return;
     Audio.play(SoundManager.get('like'));
     if(S.likesTonight%50===0){
@@ -882,12 +846,12 @@ const Events = {
   gift(username,giftName,coins,emoji,repeatCount){
     if(!en('en-gifts'))return;
     S.coinsTonight+=coins; S.giftsTonight++;
-    el('s-coins').textContent=S.coinsTonight.toLocaleString();
-    el('tb-coins').textContent=S.coinsTonight.toLocaleString();
-    el('s-gifts').textContent=S.giftsTonight;
+    if(el('s-coins'))el('s-coins').textContent=S.coinsTonight.toLocaleString();
+    if(el('tb-coins'))el('tb-coins').textContent=S.coinsTonight.toLocaleString();
+    if(el('s-gifts'))el('s-gifts').textContent=S.giftsTonight;
 
     S.giftCounts[username]=(S.giftCounts[username]||0)+coins;
-    if(S.giftCounts[username]>S.topGifterCoins){S.topGifterCoins=S.giftCounts[username];S.topGifter=username;el('top-gifter').textContent=`${username} (${S.topGifterCoins.toLocaleString()} coins)`;}
+    if(S.giftCounts[username]>S.topGifterCoins){S.topGifterCoins=S.giftCounts[username];S.topGifter=username;if(el('top-gifter'))el('top-gifter').textContent=`${username} (${S.topGifterCoins.toLocaleString()} coins)`;}
 
     const prev=S.giftStreaks[username];
     if(prev&&prev.gift===giftName){prev.count++;clearTimeout(S.giftStreakTimers[username]);}
@@ -901,7 +865,6 @@ const Events = {
     const small=+g('set-small')||100, medium=+g('set-medium')||1000, large=+g('set-large')||5000;
     const size=coins>=large?'large':coins>=medium?'medium':'small';
 
-    // Auto-learn
     const gid=giftName.toLowerCase().replace(/[^a-z0-9]/g,'_');
     if(!GiftLibrary.gifts.find(g=>g.id===gid||g.name.toLowerCase()===giftName.toLowerCase())){
       GiftLibrary.learnGift(giftName,coins,emoji||'🎁');
@@ -938,8 +901,8 @@ const Events = {
   viewers(count){
     S.viewers=count;
     if(count>S.peakViewers)S.peakViewers=count;
-    el('s-viewers').textContent=count;
-    el('tb-viewers').textContent=count;
+    if(el('s-viewers'))el('s-viewers').textContent=count;
+    if(el('tb-viewers'))el('tb-viewers').textContent=count;
     [10,25,50,100,250,500,1000].forEach(m=>{
       if(count>=m&&!S.viewerMilestones.has(m)&&en('en-milestones')){
         S.viewerMilestones.add(m);
@@ -979,19 +942,19 @@ const Loyalty={
 const Nicknames={
   data:{},
   load(){try{this.data=JSON.parse(localStorage.getItem('tla-nicks')||'{}');}catch(_){}this.render();},
-  add(){const u=el('nick-user').value.trim().toLowerCase(),gv=el('nick-greeting').value.trim();if(!u||!gv)return;this.data[u]=gv;localStorage.setItem('tla-nicks',JSON.stringify(this.data));el('nick-user').value='';el('nick-greeting').value='';this.render();},
+  add(){const u=el('nick-user').value.trim().toLowerCase(),gv=el('nick-greeting').value.trim();if(!u||!gv)return;this.data[u]=gv;localStorage.setItem('tla-nicks',JSON.stringify(this.data));if(el('nick-user'))el('nick-user').value='';if(el('nick-greeting'))el('nick-greeting').value='';this.render();},
   remove(u){delete this.data[u];localStorage.setItem('tla-nicks',JSON.stringify(this.data));this.render();},
   get(un){return this.data[un.toLowerCase()]||null;},
-  render(){el('nicknames-list').innerHTML=Object.entries(this.data).map(([u,gv])=>`<span class="tag" onclick="Nicknames.remove('${u}')">${esc(u)}: "${esc(gv)}" ✕</span>`).join('');}
+  render(){if(el('nicknames-list'))el('nicknames-list').innerHTML=Object.entries(this.data).map(([u,gv])=>`<span class="tag" onclick="Nicknames.remove('${u}')">${esc(u)}: "${esc(gv)}" ✕</span>`).join('');}
 };
 const Keywords={
   defaults:{'first time':"Welcome to your first stream, so glad you are here!",'hello':"Hey there, welcome in!",'love you':"Love you too, thank you!",'how are you':"I am doing amazing, thank you for asking!"},
   data:{},
   load(){try{this.data=JSON.parse(localStorage.getItem('tla-kw')||'{}');}catch(_){}if(!Object.keys(this.data).length)this.data={...this.defaults};this.render();},
-  add(){const t=el('kw-trigger').value.trim().toLowerCase(),r=el('kw-response').value.trim();if(!t||!r)return;this.data[t]=r;localStorage.setItem('tla-kw',JSON.stringify(this.data));el('kw-trigger').value='';el('kw-response').value='';this.render();},
+  add(){const t=el('kw-trigger').value.trim().toLowerCase(),r=el('kw-response').value.trim();if(!t||!r)return;this.data[t]=r;localStorage.setItem('tla-kw',JSON.stringify(this.data));if(el('kw-trigger'))el('kw-trigger').value='';if(el('kw-response'))el('kw-response').value='';this.render();},
   remove(t){delete this.data[t];localStorage.setItem('tla-kw',JSON.stringify(this.data));this.render();},
   check(text){return this.data[Object.keys(this.data).find(k=>text.includes(k))]||null;},
-  render(){el('keywords-list').innerHTML=Object.entries(this.data).map(([t,r])=>`<span class="tag" onclick="Keywords.remove('${esc(t)}')">"${esc(t)}" ✕</span>`).join('');}
+  render(){if(el('keywords-list'))el('keywords-list').innerHTML=Object.entries(this.data).map(([t,r])=>`<span class="tag" onclick="Keywords.remove('${esc(t)}')">"${esc(t)}" ✕</span>`).join('');}
 };
 
 // ══════════════════════════════════════════════════════════
@@ -1016,13 +979,13 @@ const Reminders={
 // GAMES
 // ══════════════════════════════════════════════════════════
 const Games={
-  poll(){const q=prompt('Poll question:');if(!q)return;S.pollActive=true;S.pollResults={yes:0,no:0};Queue.add(`Poll time! ${q} — type YES or NO in chat!`,'milestone',2,SoundManager.get('milestone'));el('game-status').textContent=`Poll (30s): ${q}`;clearTimeout(S.pollTimer);S.pollTimer=setTimeout(()=>{S.pollActive=false;const tot=S.pollResults.yes+S.pollResults.no;if(tot){const yp=Math.round((S.pollResults.yes/tot)*100);Queue.add(`Poll: ${yp}% yes, ${100-yp}% no from ${tot} votes!`,'milestone',2,SoundManager.get('milestone'));}else Queue.add('Poll ended with no votes.','system',5);el('game-status').textContent=`Poll ended — Yes:${S.pollResults.yes} No:${S.pollResults.no}`;},30000);},
-  firstToType(){const w=prompt('What word should they type?');if(!w)return;S.fttActive=true;S.fttWord=w;Queue.add(`First to type ${w} wins a shoutout!`,'milestone',2,SoundManager.get('milestone'));el('game-status').textContent=`Waiting for: "${w}"`;},
-  startGiveaway(){S.giveawayActive=true;S.giveawayEntrants=new Set();Queue.add('Giveaway active! Everyone commenting is entered to win!','milestone',2,SoundManager.get('milestone'));el('game-status').textContent='Giveaway active';const t=setInterval(()=>{if(!S.giveawayActive){clearInterval(t);return;}el('game-status').textContent=`Giveaway — ${S.giveawayEntrants.size} entrants`;},2000);},
-  pickWinner(){const ents=[...S.giveawayEntrants];S.giveawayActive=false;if(!ents.length){Queue.add('No entrants yet!','system',4);return;}const w=ents[Math.floor(Math.random()*ents.length)];Queue.add('Drumroll please...','system',2,SoundManager.get('small'));setTimeout(()=>{Queue.add(`And the winner is... ${w}! Congratulations!`,'milestone',1,SoundManager.get('milestone'),{pitch:1.2});el('game-status').textContent=`Winner: ${w}`;UI.flash('gold');},2500);},
-  wheel(){const raw=prompt('Wheel options (comma separated):');if(!raw)return;const opts=raw.split(',').map(s=>s.trim()).filter(Boolean);if(opts.length<2)return;Queue.add('The wheel is spinning...','system',3,SoundManager.get('small'));let ticks=0;const iv=setInterval(()=>{Audio.play('Notification');ticks++;if(ticks>=20){clearInterval(iv);const r=opts[Math.floor(Math.random()*opts.length)];setTimeout(()=>{Queue.add(`The wheel has landed on... ${r}!`,'milestone',1,SoundManager.get('milestone'));el('game-status').textContent=`Wheel: ${r}`;},500);}},120+ticks*10);},
-  countdown(){const mins=+(prompt('Count down from how many minutes?','5')||0);if(!mins)return;let secs=mins*60;Queue.add(`Starting a ${mins} minute countdown!`,'system',3);el('game-status').textContent=`Countdown: ${mins}:00`;clearInterval(S.countdownTimer);const marks=[300,180,120,60,30,10,9,8,7,6,5,4,3,2,1];S.countdownTimer=setInterval(()=>{secs--;const m=Math.floor(secs/60),s=secs%60;el('game-status').textContent=`${m}:${String(s).padStart(2,'0')}`;if(marks.includes(secs)){if(secs>60)Queue.add(`${m} minutes remaining!`,'system',6);else if(secs>10)Queue.add(`${secs} seconds!`,'system',4);else if(secs>0)Queue.add(`${secs}!`,'system',2,null,{rate:1.5});else{Queue.add('Time is up! Go go go!','milestone',1,SoundManager.get('milestone'));clearInterval(S.countdownTimer);el('game-status').textContent='Done!';}}},1000);},
-  stop(){S.pollActive=S.fttActive=S.giveawayActive=false;clearTimeout(S.pollTimer);clearInterval(S.countdownTimer);el('game-status').textContent='Stopped';Queue.add('All games stopped.','system',5);}
+  poll(){const q=prompt('Poll question:');if(!q)return;S.pollActive=true;S.pollResults={yes:0,no:0};Queue.add(`Poll time! ${q} — type YES or NO in chat!`,'milestone',2,SoundManager.get('milestone'));if(el('game-status'))el('game-status').textContent=`Poll (30s): ${q}`;clearTimeout(S.pollTimer);S.pollTimer=setTimeout(()=>{S.pollActive=false;const tot=S.pollResults.yes+S.pollResults.no;if(tot){const yp=Math.round((S.pollResults.yes/tot)*100);Queue.add(`Poll: ${yp}% yes, ${100-yp}% no from ${tot} votes!`,'milestone',2,SoundManager.get('milestone'));}else Queue.add('Poll ended with no votes.','system',5);if(el('game-status'))el('game-status').textContent=`Poll ended — Yes:${S.pollResults.yes} No:${S.pollResults.no}`;},30000);},
+  firstToType(){const w=prompt('What word should they type?');if(!w)return;S.fttActive=true;S.fttWord=w;Queue.add(`First to type ${w} wins a shoutout!`,'milestone',2,SoundManager.get('milestone'));if(el('game-status'))el('game-status').textContent=`Waiting for: "${w}"`;},
+  startGiveaway(){S.giveawayActive=true;S.giveawayEntrants=new Set();Queue.add('Giveaway active! Everyone commenting is entered to win!','milestone',2,SoundManager.get('milestone'));if(el('game-status'))el('game-status').textContent='Giveaway active';const t=setInterval(()=>{if(!S.giveawayActive){clearInterval(t);return;}if(el('game-status'))el('game-status').textContent=`Giveaway — ${S.giveawayEntrants.size} entrants`;},2000);},
+  pickWinner(){const ents=[...S.giveawayEntrants];S.giveawayActive=false;if(!ents.length){Queue.add('No entrants yet!','system',4);return;}const w=ents[Math.floor(Math.random()*ents.length)];Queue.add('Drumroll please...','system',2,SoundManager.get('small'));setTimeout(()=>{Queue.add(`And the winner is... ${w}! Congratulations!`,'milestone',1,SoundManager.get('milestone'),{pitch:1.2});if(el('game-status'))el('game-status').textContent=`Winner: ${w}`;UI.flash('gold');},2500);},
+  wheel(){const raw=prompt('Wheel options (comma separated):');if(!raw)return;const opts=raw.split(',').map(s=>s.trim()).filter(Boolean);if(opts.length<2)return;Queue.add('The wheel is spinning...','system',3,SoundManager.get('small'));let ticks=0;const iv=setInterval(()=>{Audio.play('Notification');ticks++;if(ticks>=20){clearInterval(iv);const r=opts[Math.floor(Math.random()*opts.length)];setTimeout(()=>{Queue.add(`The wheel has landed on... ${r}!`,'milestone',1,SoundManager.get('milestone'));if(el('game-status'))el('game-status').textContent=`Wheel: ${r}`;},500);}},120+ticks*10);},
+  countdown(){const mins=+(prompt('Count down from how many minutes?','5')||0);if(!mins)return;let secs=mins*60;Queue.add(`Starting a ${mins} minute countdown!`,'system',3);if(el('game-status'))el('game-status').textContent=`Countdown: ${mins}:00`;clearInterval(S.countdownTimer);const marks=[300,180,120,60,30,10,9,8,7,6,5,4,3,2,1];S.countdownTimer=setInterval(()=>{secs--;const m=Math.floor(secs/60),s=secs%60;if(el('game-status'))el('game-status').textContent=`${m}:${String(s).padStart(2,'0')}`;if(marks.includes(secs)){if(secs>60)Queue.add(`${m} minutes remaining!`,'system',6);else if(secs>10)Queue.add(`${secs} seconds!`,'system',4);else if(secs>0)Queue.add(`${secs}!`,'system',2,null,{rate:1.5});else{Queue.add('Time is up! Go go go!','milestone',1,SoundManager.get('milestone'));clearInterval(S.countdownTimer);if(el('game-status'))el('game-status').textContent='Done!';}}},1000);},
+  stop(){S.pollActive=S.fttActive=S.giveawayActive=false;clearTimeout(S.pollTimer);clearInterval(S.countdownTimer);if(el('game-status'))el('game-status').textContent='Stopped';Queue.add('All games stopped.','system',5);}
 };
 
 // ══════════════════════════════════════════════════════════
@@ -1039,60 +1002,56 @@ const TikTok = {
   _intentionalClose: false,
 
   showConnectModal() {
-    el('connect-modal').classList.remove('hidden');
-    el('modal-err').textContent = '';
-    el('modal-username').value = '';
+    if(el('connect-modal')) el('connect-modal').classList.remove('hidden');
+    if(el('modal-err')) el('modal-err').textContent = '';
+    if(el('modal-username')) el('modal-username').value = '';
     const savedKey = localStorage.getItem('tla-euler-key') || '';
-    if (savedKey) el('modal-apikey').value = savedKey;
+    if (savedKey && el('modal-apikey')) el('modal-apikey').value = savedKey;
     DiamondGlow.render('dg-modal-list');
     this.renderSaved();
-    setTimeout(() => el('modal-username').focus(), 100);
-    el('modal-username').onkeydown = e => { if(e.key==='Enter') el('modal-apikey').focus(); };
-    el('modal-apikey').onkeydown   = e => { if(e.key==='Enter') TikTok.connect(); };
+    setTimeout(() => { if(el('modal-username')) el('modal-username').focus(); }, 100);
+    if(el('modal-username')) el('modal-username').onkeydown = e => { if(e.key==='Enter' && el('modal-apikey')) el('modal-apikey').focus(); else if(e.key==='Enter') TikTok.connect(); };
+    if(el('modal-apikey')) el('modal-apikey').onkeydown   = e => { if(e.key==='Enter') TikTok.connect(); };
   },
 
-  closeModal() { el('connect-modal').classList.add('hidden'); Speech.cancel(); },
-  selectMember(handle) { el('modal-username').value = handle; el('modal-username').focus(); },
+  closeModal() { if(el('connect-modal')) el('connect-modal').classList.add('hidden'); Speech.cancel(); },
+  selectMember(handle) { if(el('modal-username')){el('modal-username').value = handle; el('modal-username').focus();} },
 
   connect() {
-    const username = el('modal-username').value.trim().replace('@','');
-    if (!username) { el('modal-err').textContent = 'Please enter a username.'; return; }
+    const username = el('modal-username') ? el('modal-username').value.trim().replace('@','') : '';
+    if (!username) { if(el('modal-err')) el('modal-err').textContent = 'Please enter a username.'; return; }
     this.saveUsername(username);
     this._username = username;
     this._intentionalClose = false;
-    el('modal-err').textContent = 'Connecting...';
-    // Try to get a JWT from the server (uses server's API key — no key needed by user)
+    if(el('modal-err')) el('modal-err').textContent = 'Connecting...';
+    
     fetch(`/api/euler-connect?username=${encodeURIComponent(username)}`)
       .then(r => r.json())
       .then(data => {
         if (data.ok && data.token) {
-          // Use JWT token — most secure
           this._jwt = data.token;
           this._apiKey = '';
           this.doConnect(username, null, data.token);
         } else if (data.ok && data.apiKey) {
-          // Server returned API key directly as fallback
           this._apiKey = data.apiKey;
           this.doConnect(username, data.apiKey, null);
         } else {
-          // Server has no key — check if user has their own stored key
-          const storedKey = localStorage.getItem('tla-euler-key') || el('modal-apikey')?.value?.trim() || '';
+          const storedKey = localStorage.getItem('tla-euler-key') || (el('modal-apikey') ? el('modal-apikey').value.trim() : '');
           if (storedKey) {
             this._apiKey = storedKey;
             this.doConnect(username, storedKey, null);
           } else {
-            el('modal-err').textContent = 'Connection failed. Please contact the app owner.';
+            if(el('modal-err')) el('modal-err').textContent = 'Connection failed. Please contact the app owner.';
           }
         }
       })
       .catch(() => {
-        // Network error — try stored key
-        const storedKey = localStorage.getItem('tla-euler-key') || el('modal-apikey')?.value?.trim() || '';
+        const storedKey = localStorage.getItem('tla-euler-key') || (el('modal-apikey') ? el('modal-apikey').value.trim() : '');
         if (storedKey) {
           this._apiKey = storedKey;
           this.doConnect(username, storedKey, null);
         } else {
-          el('modal-err').textContent = 'Connection failed. Please try again.';
+          if(el('modal-err')) el('modal-err').textContent = 'Connection failed. Please try again.';
         }
       });
   },
@@ -1105,7 +1064,6 @@ const TikTok = {
     if (this.pingInterval) { clearInterval(this.pingInterval); this.pingInterval = null; }
     this._intentionalClose = false;
 
-    // Build EulerStream WebSocket URL — JWT preferred, API key as fallback
     let url;
     if (jwtToken) {
       url = `wss://ws.eulerstream.com?uniqueId=${encodeURIComponent(username)}&jwtKey=${encodeURIComponent(jwtToken)}`;
@@ -1117,7 +1075,6 @@ const TikTok = {
 
     ws.onopen = () => {
       console.log('[Euler] WebSocket open');
-      // Keep-alive ping every 20 seconds
       this.pingInterval = setInterval(() => {
         if (ws.readyState === WebSocket.OPEN) {
           try { ws.send(JSON.stringify({ type: 'ping' })); } catch(_) {}
@@ -1128,7 +1085,6 @@ const TikTok = {
     ws.onmessage = (raw) => {
       try {
         const data = JSON.parse(raw.data);
-        // EulerStream sends batched messages: { messages: [...] }
         const messages = data.messages || (data.type ? [data] : []);
         messages.forEach(msg => this.handleMessage(msg, username));
       } catch(e) { console.error('[Euler] Parse error:', e); }
@@ -1144,17 +1100,15 @@ const TikTok = {
       if (this.pingInterval) { clearInterval(this.pingInterval); this.pingInterval = null; }
       this.ws = null;
 
-      // Clean close codes
       if (this._intentionalClose || e.code === 1000) return;
 
-      // Error codes
       if (e.code === 4400) {
-        el('modal-err') && (el('modal-err').textContent = 'Invalid username or API key.');
+        if(el('modal-err')) el('modal-err').textContent = 'Invalid username or API key.';
         TikTok.handleDisconnect('Invalid connection details.');
         return;
       }
       if (e.code === 4404) {
-        el('modal-err') && (el('modal-err').textContent = 'Stream not found or not live. Make sure the stream is already live.');
+        if(el('modal-err')) el('modal-err').textContent = 'Stream not found or not live. Make sure the stream is already live.';
         TikTok.handleDisconnect('Stream not live.');
         return;
       }
@@ -1163,40 +1117,41 @@ const TikTok = {
         return;
       }
       if (e.code === 4429) {
-        el('modal-err') && (el('modal-err').textContent = 'Too many connections. Wait a moment and try again.');
+        if(el('modal-err')) el('modal-err').textContent = 'Too many connections. Wait a moment and try again.';
         TikTok.handleDisconnect('Too many connections.');
         return;
       }
 
-      // Unexpected drop — reconnect silently
       if (S.tiktokConnected) {
         console.log('[Euler] Unexpected drop — reconnecting in 2s...');
         UI.log('system','TikTok','Reconnecting...','🔄');
         clearTimeout(this.reconnectTimer);
         this.reconnectTimer = setTimeout(() => {
           if (!S.isLive) return;
-          // Re-fetch JWT from server for reconnect
           TikTok.connect();
         }, 2000);
       } else {
-        el('modal-err') && (el('modal-err').textContent = 'Connection failed. Make sure the stream is live and try again.');
+        if(el('modal-err')) el('modal-err').textContent = 'Connection failed. Make sure the stream is live and try again.';
       }
     };
   },
 
   handleMessage(msg, username) {
-    if (!msg || !msg.type) return;
-    const type = msg.type;
+    if (!msg) return;
     
-    // THE FIX: Expanded search to find the username in EulerStream's messy payload
-    const user = msg.nickname || 
-                 msg.uniqueId || 
-                 msg.user?.nickname || 
-                 msg.user?.uniqueId || 
-                 msg.author?.nickname || 
-                 msg.author?.uniqueId || 
-                 msg.userId || 
-                 'Someone';
+    // Unwrap nested EulerStream payloads if needed
+    if (msg.data && msg.data.type) msg = msg.data;
+    if (msg.event && msg.event.type) msg = msg.event;
+    
+    const type = msg.type;
+    if (!type) return;
+    
+    // Bulletproof Username Extraction - catch it anywhere it hides
+    let user = 'Someone';
+    if (msg.user) user = msg.user.nickname || msg.user.uniqueId || msg.user.displayId || 'Someone';
+    else if (msg.author) user = msg.author.nickname || msg.author.uniqueId || msg.author.displayId || 'Someone';
+    else if (msg.userDetails) user = msg.userDetails.profileName || msg.userDetails.nickname || msg.userDetails.uniqueId || 'Someone';
+    else user = msg.nickname || msg.uniqueId || msg.displayId || msg.userId || 'Someone';
 
     // Mark as connected on first room message
     if (!S.tiktokConnected && (
@@ -1207,10 +1162,12 @@ const TikTok = {
     )) {
       S.tiktokConnected = true;
       TikTok.closeModal();
-      el('btn-connect').textContent = '🔴 DISCONNECT';
-      el('btn-connect').classList.add('live');
-      el('live-dot').classList.add('on');
-      el('live-label').textContent = 'LIVE';
+      if(el('btn-connect')){
+        el('btn-connect').textContent = '🔴 DISCONNECT';
+        el('btn-connect').classList.add('live');
+      }
+      if(el('live-dot')) el('live-dot').classList.add('on');
+      if(el('live-label')) el('live-label').textContent = 'LIVE';
       App.goLive();
       Queue.add(`Connected to ${username}'s TikTok live stream!`, 'system', 2, SoundManager.get('milestone'));
       UI.log('system','TikTok',`Connected to @${username}`,'✅');
@@ -1218,14 +1175,16 @@ const TikTok = {
 
     switch(type) {
       case 'WebcastChatMessage':
-        Events.comment(user, msg.comment || '');
+        // Bulletproof Comment Extraction - catch it anywhere it hides
+        const text = msg.comment || msg.content || msg.text || msg.msg || '';
+        Events.comment(user, text);
         break;
 
       case 'WebcastGiftMessage':
         if (msg.repeatEnd !== false) {
-          Events.gift(user, msg.giftName || msg.gift?.name || 'Gift',
-            msg.diamondCount || msg.gift?.diamondCount || 0, '🎁',
-            msg.repeatCount || 1);
+          const giftName = msg.giftName || msg.gift?.name || msg.gift?.describe || 'Gift';
+          const coins = msg.diamondCount || msg.gift?.diamondCount || msg.gift?.coinCount || 0;
+          Events.gift(user, giftName, coins, '🎁', msg.repeatCount || 1);
         }
         break;
 
@@ -1238,15 +1197,14 @@ const TikTok = {
         break;
 
       case 'WebcastLikeMessage':
-        Events.like(user, msg.count || msg.likeCount || 1);
+        Events.like(user, msg.count || msg.likeCount || msg.totalLikeCount || 1);
         break;
 
       case 'WebcastMemberMessage':
-        // Member joined — track but don't announce by default
         break;
 
       case 'WebcastRoomUserSeqMessage':
-        if (msg.viewerCount) Events.viewers(msg.viewerCount);
+        if (msg.viewerCount || msg.totalUser) Events.viewers(msg.viewerCount || msg.totalUser);
         break;
 
       case 'WebcastSubNotifyMessage':
@@ -1260,17 +1218,19 @@ const TikTok = {
         break;
 
       case 'pong':
-        break; // keep-alive response
+        break; 
     }
   },
 
   handleDisconnect(reason) {
     S.tiktokConnected = false;
     if (this.pingInterval) { clearInterval(this.pingInterval); this.pingInterval = null; }
-    el('btn-connect').textContent = '🔴 CONNECT TO TIKTOK';
-    el('btn-connect').classList.remove('live');
-    el('live-dot').classList.remove('on');
-    el('live-label').textContent = 'OFFLINE';
+    if(el('btn-connect')){
+      el('btn-connect').textContent = '🔴 CONNECT TO TIKTOK';
+      el('btn-connect').classList.remove('live');
+    }
+    if(el('live-dot')) el('live-dot').classList.remove('on');
+    if(el('live-label')) el('live-label').textContent = 'OFFLINE';
     Queue.add(`Disconnected. ${reason}`, 'alert', 2);
     UI.log('alert','TikTok', reason,'❌');
   },
@@ -1297,6 +1257,7 @@ const TikTok = {
   renderSaved() {
     const saved = JSON.parse(localStorage.getItem('tla-saved-users') || '[]');
     const box = el('saved-box'), list = el('saved-chips');
+    if(!box || !list) return;
     if (!saved.length) { box.style.display='none'; return; }
     box.style.display = 'block';
     list.innerHTML = saved.map(u =>
@@ -1312,12 +1273,13 @@ const App={
   goLive(){
     if(S.isLive)return;
     S.isLive=true;S.startTime=Date.now();
-    el('live-dot').classList.add('on');el('live-label').textContent='LIVE';
+    if(el('live-dot'))el('live-dot').classList.add('on');
+    if(el('live-label'))el('live-label').textContent='LIVE';
     S.streamInterval=setInterval(()=>{
       S.streamDuration++;
       const h=Math.floor(S.streamDuration/3600),m=Math.floor((S.streamDuration%3600)/60),s=S.streamDuration%60;
-      el('stream-timer').textContent=`${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
-      el('s-time').textContent=h>0?`${h}h${String(m).padStart(2,'0')}m`:`${m}m`;
+      if(el('stream-timer'))el('stream-timer').textContent=`${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+      if(el('s-time'))el('s-time').textContent=h>0?`${h}h${String(m).padStart(2,'0')}m`:`${m}m`;
     },1000);
     Reminders.start();
   },
@@ -1327,20 +1289,20 @@ const App={
   },
   toggleMute(){
     S.isMuted=!S.isMuted;
-    if(S.isMuted){Speech.cancel();Queue.clear();el('mute-btn').textContent='🔇 MUTED — TAP TO UNMUTE';el('mute-btn').classList.add('muted');}
-    else{el('mute-btn').textContent='🔊 UNMUTED';el('mute-btn').classList.remove('muted');}
+    if(S.isMuted){Speech.cancel();Queue.clear();if(el('mute-btn')){el('mute-btn').textContent='🔇 MUTED — TAP TO UNMUTE';el('mute-btn').classList.add('muted');}}
+    else{if(el('mute-btn')){el('mute-btn').textContent='🔊 UNMUTED';el('mute-btn').classList.remove('muted');}}
   },
-  setRate(val){S.speechRate=parseFloat(val);el('rate-slider').value=val;el('rate-val').textContent=parseFloat(val).toFixed(1)+'×';Settings.save();},
-  setVolume(val){S.voiceVolume=val/100;el('vol-slider').value=val;el('vol-val').textContent=Math.round(val)+'%';Settings.save();},
-  setSfxVolume(val){S.sfxVolume=val/100;el('sfx-slider').value=val;el('sfx-val').textContent=Math.round(val)+'%';},
-  setQA(val){S.qaMode=val;el('qa-toggle').checked=val;Queue.add(val?'Q and A mode on. Only questions announced.':'Q and A mode off.','system',3);},
+  setRate(val){S.speechRate=parseFloat(val);if(el('rate-slider'))el('rate-slider').value=val;if(el('rate-val'))el('rate-val').textContent=parseFloat(val).toFixed(1)+'×';Settings.save();},
+  setVolume(val){S.voiceVolume=val/100;if(el('vol-slider'))el('vol-slider').value=val;if(el('vol-val'))el('vol-val').textContent=Math.round(val)+'%';Settings.save();},
+  setSfxVolume(val){S.sfxVolume=val/100;if(el('sfx-slider'))el('sfx-slider').value=val;if(el('sfx-val'))el('sfx-val').textContent=Math.round(val)+'%';},
+  setQA(val){S.qaMode=val;if(el('qa-toggle'))el('qa-toggle').checked=val;Queue.add(val?'Q and A mode on. Only questions announced.':'Q and A mode off.','system',3);},
   setSafe(val){S.safeMode=val;Queue.add(val?'Safe mode on.':'Safe mode off.','system',3);},
-  setCalm(val){S.calmMode=val;el('calm-toggle').checked=val;Queue.add(val?'Calm mode on.':'Calm mode off.','system',3);},
+  setCalm(val){S.calmMode=val;if(el('calm-toggle'))el('calm-toggle').checked=val;Queue.add(val?'Calm mode on.':'Calm mode off.','system',3);},
   setToxic(val){S.toxicFilter=val;},
   setBleep(val){S.bleepProfanity=val;},
   setTranslate(val){
     S.autoTranslate=val;
-    el('translate-badge').style.display=val?'inline-block':'none';
+    if(el('translate-badge'))el('translate-badge').style.display=val?'inline-block':'none';
     Queue.add(val?'Auto-translate is on. Non-English comments will be translated.':'Auto-translate is off.','system',4);
   },
   setVoiceCommands(val){
@@ -1355,7 +1317,7 @@ const App={
   panic(){
     Queue.clear();S.isMuted=false;
     Audio.play('Double Alert');
-    Speech.browserSpeak('Stream paused safely. You are okay. Take your time. Breathe.',{rate:.82,pitch:.9,volume:1.0,onend:()=>{S.isMuted=true;el('mute-btn').textContent='🔇 MUTED — TAP TO UNMUTE';el('mute-btn').classList.add('muted');}});
+    Speech.browserSpeak('Stream paused safely. You are okay. Take your time. Breathe.',{rate:.82,pitch:.9,volume:1.0,onend:()=>{S.isMuted=true;if(el('mute-btn')){el('mute-btn').textContent='🔇 MUTED — TAP TO UNMUTE';el('mute-btn').classList.add('muted');}}});
     UI.log('alert','PANIC','⚠ Panic — muted','🚨');UI.flash('red');
   },
   endStream(){
@@ -1366,8 +1328,9 @@ const App={
     const summary=`Tonight was a fantastic stream. You were live for ${dur}. You gained ${S.followsTonight} new followers. You earned approximately ${S.coinsTonight.toLocaleString()} coins. ${S.topGifter?`Top gifter was ${S.topGifter} with ${S.topGifterCoins.toLocaleString()} coins. `:''}${S.topCommenter?`Most active chatter was ${S.topCommenter}. `:''}Peak viewers was ${S.peakViewers}. You did an incredible job. Rest up and see you next time.`;
     Speech.speak(summary,{rate:.9,volume:1.0});
     UI.log('system','Ended',summary,'🔴');
-    el('live-dot').classList.remove('on');el('live-label').textContent='ENDED';
-    el('btn-connect').textContent='🔴 CONNECT TO TIKTOK';el('btn-connect').classList.remove('live');
+    if(el('live-dot'))el('live-dot').classList.remove('on');
+    if(el('live-label'))el('live-label').textContent='ENDED';
+    if(el('btn-connect')){el('btn-connect').textContent='🔴 CONNECT TO TIKTOK';el('btn-connect').classList.remove('live');}
     if(S.tiktokConnected) TikTok.disconnect();
   },
   handleKey(e){
@@ -1377,8 +1340,8 @@ const App={
       case 's':this.skip();break;
       case 'r':this.repeatLast();break;
       case 'p':this.panic();break;
-      case 'q':{const nv=!S.qaMode;el('qa-toggle').checked=nv;this.setQA(nv);}break;
-      case 'c':{const nv=!S.calmMode;el('calm-toggle').checked=nv;this.setCalm(nv);}break;
+      case 'q':{const nv=!S.qaMode;if(el('qa-toggle'))el('qa-toggle').checked=nv;this.setQA(nv);}break;
+      case 'c':{const nv=!S.calmMode;if(el('calm-toggle'))el('calm-toggle').checked=nv;this.setCalm(nv);}break;
       case '-':this.setRate(Math.max(.5,S.speechRate-.1));break;
       case '=':case '+':this.setRate(Math.min(2.5,S.speechRate+.1));break;
     }
@@ -1408,39 +1371,47 @@ const Test={
 const UI={
   log(type,username,text,icon){
     const c=el('log-container');
+    if(!c)return;
     const t=new Date().toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
     const d=document.createElement('div');d.className='log-entry new';
     d.innerHTML=`<span class="log-time">${t}</span><span class="log-badge lb-${type}">${type}</span><span class="log-text"><span class="un">${esc(username)}</span> — ${esc(text)}</span>`;
     c.appendChild(d);c.scrollTop=c.scrollHeight;
     setTimeout(()=>d.classList.remove('new'),500);
   },
-  clearLog(){el('log-container').innerHTML='';},
+  clearLog(){if(el('log-container'))el('log-container').innerHTML='';},
   setNP(item){
-    el('np-type').textContent=item.type.toUpperCase();el('np-type').className='now-type '+item.type;
-    el('np-text').textContent=item.text;
-    const bar=el('np-bar');bar.style.transition='none';bar.style.width='100%';
-    requestAnimationFrame(()=>requestAnimationFrame(()=>{bar.style.transition='width 4s linear';bar.style.width='0%';}));
+    if(el('np-type')){el('np-type').textContent=item.type.toUpperCase();el('np-type').className='now-type '+item.type;}
+    if(el('np-text'))el('np-text').textContent=item.text;
+    const bar=el('np-bar');
+    if(bar){
+      bar.style.transition='none';bar.style.width='100%';
+      requestAnimationFrame(()=>requestAnimationFrame(()=>{bar.style.transition='width 4s linear';bar.style.width='0%';}));
+    }
   },
-  clearNP(){el('np-type').textContent='IDLE';el('np-type').className='now-type';el('np-text').textContent='Waiting for events...';el('np-bar').style.width='0%';},
+  clearNP(){
+    if(el('np-type')){el('np-type').textContent='IDLE';el('np-type').className='now-type';}
+    if(el('np-text'))el('np-text').textContent='Waiting for events...';
+    if(el('np-bar'))el('np-bar').style.width='0%';
+  },
   updateQueue(){
     const n=S.queue.length;
-    el('tb-queue').textContent=n;
-    el('queue-preview').textContent=n>0?`Next: ${S.queue[0].text.slice(0,40)}…`:'';
+    if(el('tb-queue'))el('tb-queue').textContent=n;
+    if(el('queue-preview'))el('queue-preview').textContent=n>0?`Next: ${S.queue[0].text.slice(0,40)}…`:'';
   },
   updateVoice(){
-    el('voice-dot').className='voice-dot'+(S.vcEnabled?' on':'');
-    el('voice-label').textContent=S.vcEnabled?'MIC ON':'MIC OFF';
+    if(el('voice-dot'))el('voice-dot').className='voice-dot'+(S.vcEnabled?' on':'');
+    if(el('voice-label'))el('voice-label').textContent=S.vcEnabled?'MIC ON':'MIC OFF';
   },
-  flash(color){const o=el('flash-overlay');o.className=`flash-overlay ${color} show`;setTimeout(()=>o.classList.remove('show'),700);},
+  flash(color){const o=el('flash-overlay');if(o){o.className=`flash-overlay ${color} show`;setTimeout(()=>o.classList.remove('show'),700);}},
   openSettings(){
     const p=el('settings-panel'),o=el('settings-overlay');
-    p.classList.remove('hidden');o.classList.remove('hidden');
-    setTimeout(()=>p.classList.add('open'),10);
+    if(p)p.classList.remove('hidden');if(o)o.classList.remove('hidden');
+    setTimeout(()=>if(p)p.classList.add('open'),10);
   },
   closeSettings(){
     const p=el('settings-panel'),o=el('settings-overlay');
-    p.classList.remove('open');
-    setTimeout(()=>{p.classList.add('hidden');o.classList.add('hidden');},300);
+    if(p)p.classList.remove('open');
+    setTimeout(()=>{if(p)p.classList.add('hidden');if(o)o.classList.add('hidden');},300);
   }
 };
 
@@ -1458,13 +1429,14 @@ const Wizard={
     {id:'vc',type:'opts',q:"Enable voice commands? Say LiveAnnouncer to activate, then give your command hands-free. Needs Chrome or Edge.",opts:[{l:'Yes please',v:true},{l:'No thanks',v:false}],def:false},
     {id:'done',type:'finish',q:"All set! Open Settings to customise voices and sounds. Press Connect to TikTok when you are live. Enjoy your stream!"}
   ],
-  start(){el('app').classList.add('hidden');el('wizard').classList.remove('hidden');this.step=0;this.ans={};this.render();},
+  start(){if(el('app'))el('app').classList.add('hidden');if(el('wizard'))el('wizard').classList.remove('hidden');this.step=0;this.ans={};this.render();},
   render(){
     const s=this.steps[this.step],total=this.steps.length;
-    el('wiz-dots').innerHTML=Array.from({length:total},(_,i)=>`<div class="wiz-dot${i<=this.step?' on':''}"></div>`).join('');
-    el('wiz-step').textContent=`Step ${this.step+1} of ${total}`;
-    setTimeout(()=>{Speech.browserSpeak(s.q,{rate:1.0,volume:1.0});el('wiz-speaking').textContent='🔊 Speaking...';setTimeout(()=>el('wiz-speaking').textContent='',3500);},200);
+    if(el('wiz-dots'))el('wiz-dots').innerHTML=Array.from({length:total},(_,i)=>`<div class="wiz-dot${i<=this.step?' on':''}"></div>`).join('');
+    if(el('wiz-step'))el('wiz-step').textContent=`Step ${this.step+1} of ${total}`;
+    setTimeout(()=>{Speech.browserSpeak(s.q,{rate:1.0,volume:1.0});if(el('wiz-speaking'))el('wiz-speaking').textContent='🔊 Speaking...';setTimeout(()=>if(el('wiz-speaking'))el('wiz-speaking').textContent='',3500);},200);
     const c=el('wiz-content');
+    if(!c)return;
     c.innerHTML=`<p class="wiz-text">${s.q}</p>`;
     if(s.type==='text'){
       c.innerHTML+=`<input type="text" class="wiz-inp" id="wiz-inp" placeholder="${s.placeholder}" value="${s.def||''}"><button class="wiz-btn" onclick="Wizard.next()">Next →</button>`;
@@ -1481,18 +1453,18 @@ const Wizard={
   next(){const s=this.steps[this.step];if(s.type==='text'){const inp=document.getElementById('wiz-inp');this.ans[s.id]=(inp?inp.value.trim():'')||s.def;}this.step++;if(this.step>=this.steps.length){this.finish();return;}this.render();},
   finish(){
     const a=this.ans;
-    if(a.name)el('set-name').value=a.name;
+    if(a.name && el('set-name'))el('set-name').value=a.name;
     if(a.rate)App.setRate(a.rate);
-    if(a.toxic!==undefined){S.toxicFilter=a.toxic;el('toxic-toggle').checked=a.toxic;}
-    if(a.translate){S.autoTranslate=true;el('translate-toggle').checked=true;el('translate-badge').style.display='inline-block';}
-    if(a.goal){el('set-goal').value=a.goal;Settings.saveGoal();}
+    if(a.toxic!==undefined){S.toxicFilter=a.toxic;if(el('toxic-toggle'))el('toxic-toggle').checked=a.toxic;}
+    if(a.translate){S.autoTranslate=true;if(el('translate-toggle'))el('translate-toggle').checked=true;if(el('translate-badge'))el('translate-badge').style.display='inline-block';}
+    if(a.goal){if(el('set-goal'))el('set-goal').value=a.goal;Settings.saveGoal();}
     Settings.save();
     localStorage.setItem('tla-wizard','done');
-    el('wizard').classList.add('hidden');el('app').classList.remove('hidden');
+    if(el('wizard'))el('wizard').classList.add('hidden');if(el('app'))el('app').classList.remove('hidden');
     setTimeout(()=>{
       Speech.speak(`Welcome ${a.name||'Streamer'}! LiveAnnouncer is ready. Open Settings to choose your voice and customise sounds. Press Connect to TikTok when you are live. Created by RB and Claude AI. Enjoy your stream!`,{rate:S.speechRate,volume:1.0});
       UI.log('system','System','🟢 LiveAnnouncer ready!','🟢');
-      if(a.vc)setTimeout(()=>{el('vc-toggle').checked=true;App.setVoiceCommands(true);},4000);
+      if(a.vc)setTimeout(()=>{if(el('vc-toggle'))el('vc-toggle').checked=true;App.setVoiceCommands(true);},4000);
     },300);
   }
 };
@@ -1510,7 +1482,6 @@ function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').repl
 // INIT
 // ══════════════════════════════════════════════════════════
 document.addEventListener('DOMContentLoaded',()=>{
-  // Load voices (retry as browsers load async)
   const lv=()=>Speech.loadVoices();
   lv();
   if(speechSynthesis.onvoiceschanged!==undefined) speechSynthesis.onvoiceschanged=lv;
@@ -1519,21 +1490,18 @@ document.addEventListener('DOMContentLoaded',()=>{
   document.addEventListener('keydown',e=>App.handleKey(e));
   Settings.load();
 
-  // Battery monitoring
   if(navigator.getBattery){navigator.getBattery().then(bat=>{const check=()=>{if(bat.level<.2&&!bat.charging)Queue.add(`Battery at ${Math.round(bat.level*100)}%. Please plug in soon.`,'alert',2,'Alert Beep');};bat.addEventListener('levelchange',check);setInterval(check,5*60000);});}
 
   if(!localStorage.getItem('tla-wizard')){
     Wizard.start();
   }else{
-    el('wizard').classList.add('hidden');el('app').classList.remove('hidden');
+    if(el('wizard'))el('wizard').classList.add('hidden');if(el('app'))el('app').classList.remove('hidden');
     setTimeout(()=>{
       Speech.speak('LiveAnnouncer is ready. Press Connect to TikTok to go live.',{rate:1.0,volume:1.0});
       UI.log('system','System','🟢 LiveAnnouncer ready!','🟢');
     },500);
   }
 
-  // Start Diamond Glow auto-checker
   DiamondGlow.init();
-  // Do first check after 3 seconds
   setTimeout(() => DiamondGlow._check('dg-grid').then(() => DiamondGlow._check('dg-modal-list')), 3000);
 });
