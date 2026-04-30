@@ -1,34 +1,5 @@
 'use strict';
-// Force websocket-only transport — fixes socket.io 400 Bad Request errors on
-// reverse proxies (Leapcell, Render free, Cloudflare etc.) that don't preserve
-// sticky sessions for the HTTP long-polling fallback handshake.
-const socket = io({ transports: ['websocket'], upgrade: false });
-
-// ── RECONNECT BADGE ──────────────────────────────────────
-// Shows a small pill in the top bar whenever the socket drops, with attempt
-// count, and hides automatically once reconnected.
-(function wireReconnectBadge(){
-  const show = (text, failed=false) => {
-    const b = document.getElementById('reconnect-badge');
-    const l = document.getElementById('reconnect-label');
-    if (!b || !l) return;
-    l.textContent = text;
-    b.classList.remove('hidden');
-    b.classList.toggle('failed', failed);
-  };
-  const hide = () => {
-    const b = document.getElementById('reconnect-badge');
-    if (b) b.classList.add('hidden');
-  };
-  socket.on('disconnect', (reason) => {
-    show(reason === 'io server disconnect' ? 'Server closed connection' : 'Reconnecting…');
-  });
-  socket.on('connect_error', () => show('Reconnecting…'));
-  socket.io.on('reconnect_attempt', (n) => show(`Reconnecting… (try ${n})`));
-  socket.io.on('reconnect_failed',  () => show('Connection lost — refresh page', true));
-  socket.io.on('reconnect',         () => hide());
-  socket.on('connect',              () => hide());
-})();
+const socket = io();
 
 // ══════════════════════════════════════════════════════════
 // CONSTANTS
@@ -702,26 +673,32 @@ const DiamondGlow = {
     DIAMOND_GLOW.forEach(m => this.liveStatus[m.handle] = 'checking');
     this.render(renderId);
 
-    // Use server-side /api/live-batch endpoint to avoid browser CORS restrictions.
-    // The server fetches TikTok directly (no CORS), in batches of up to 20.
-    const handles = DIAMOND_GLOW.map(m => m.handle);
-    try {
-      const res = await fetch('/api/live-batch', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ usernames: handles }),
-        signal: AbortSignal.timeout(15000)
-      });
-      if (res.ok) {
-        const data = await res.json();
-        DIAMOND_GLOW.forEach(m => {
-          this.liveStatus[m.handle] = !!data[m.handle];
-        });
-      } else {
-        DIAMOND_GLOW.forEach(m => this.liveStatus[m.handle] = false);
+    const checks = DIAMOND_GLOW.map(async m => {
+      try {
+        // Use allorigins CORS proxy to fetch TikTok live page
+        const url = `https://api.allorigins.win/get?url=${encodeURIComponent(`https://www.tiktok.com/@${m.handle}/live`)}`;
+        const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
+        if (res.ok) {
+          const data = await res.json();
+          const html = data.contents || '';
+          // Check for live indicators in the page content
+          const isLive = html.includes('"isLive":true') ||
+                         html.includes('"liveStatus":1') ||
+                         html.includes('liveRoomUserInfo') ||
+                         html.includes('"status":2') ||
+                         (html.includes('LIVE') && html.includes(m.handle));
+          this.liveStatus[m.handle] = isLive;
+        } else {
+          this.liveStatus[m.handle] = false;
+        }
+      } catch(_) {
+        this.liveStatus[m.handle] = false;
       }
-    } catch (_) {
-      DIAMOND_GLOW.forEach(m => this.liveStatus[m.handle] = false);
+    });
+
+    // Check in batches of 4 to avoid hammering the proxy
+    for (let i = 0; i < checks.length; i += 4) {
+      await Promise.all(checks.slice(i, i + 4));
     }
     this.render(renderId);
   }
@@ -1038,91 +1015,184 @@ const Games={
 };
 
 // ══════════════════════════════════════════════════════════
-// TIKTOK CONNECTION
+// TIKTOK CONNECTION — via TikTool WebSocket API
+// Connects directly from browser to tik.tools
+// Bypasses server IP blocking completely
 // ══════════════════════════════════════════════════════════
-const TikTok={
-  guideStep:0,
-  guideSteps:[
-    "Step 1. Open a new tab and go to tiktok dot com. Log in if not already. Come back and press Next.",
-    "Step 2. On TikTok, press F12 on your keyboard to open developer tools. Press Next when open.",
-    "Step 3. In developer tools, click the tab at the top called Application. It may be hidden — look for a double arrow. Press Next.",
-    "Step 4. On the left, find Cookies and click the arrow to expand it. Then click tiktok dot com underneath. Press Next.",
-    "Step 5. Find the cookie called sessionid — all one word, lowercase. Click it and copy the long value shown on the right. Press Next.",
-    "Step 6. Come back here and paste the value into the Session ID box below using Control V. Then press Connect. The app saves this forever — you only do this once."
-  ],
-  showConnectModal(){
+const TikTok = {
+  ws: null,
+  reconnectTimer: null,
+  currentUsername: '',
+
+  showConnectModal() {
     el('connect-modal').classList.remove('hidden');
-    el('modal-err').textContent='';
-    el('modal-username').value='';
+    el('modal-err').textContent = '';
+    el('modal-username').value = '';
+    // Pre-fill saved API key
+    const savedKey = localStorage.getItem('tla-tiktool-key') || '';
+    if (savedKey) el('modal-apikey').value = savedKey;
     DiamondGlow.render('dg-modal-list');
     this.renderSaved();
-    setTimeout(()=>el('modal-username').focus(),100);
-    el('modal-username').onkeydown=e=>{if(e.key==='Enter')TikTok.connect();};
+    setTimeout(() => el('modal-username').focus(), 100);
+    el('modal-username').onkeydown = e => { if(e.key==='Enter') el('modal-apikey').focus(); };
+    el('modal-apikey').onkeydown   = e => { if(e.key==='Enter') TikTok.connect(); };
   },
-  closeModal(){el('connect-modal').classList.add('hidden');Speech.cancel();},
-  selectMember(handle){el('modal-username').value=handle;el('modal-username').focus();},
-  connect(){
-    const username=el('modal-username').value.trim().replace('@','');
-    if(!username){el('modal-err').textContent='Please enter a username.';return;}
-    el('modal-err').textContent='Connecting...';
-    this.saveUsername(username);
-    socket.emit('connect-tiktok',{username});
-  },
-  saveUsername(u){
-    let saved=JSON.parse(localStorage.getItem('tla-saved-users')||'[]');
-    saved=saved.filter(x=>x!==u);saved.unshift(u);saved=saved.slice(0,8);
-    localStorage.setItem('tla-saved-users',JSON.stringify(saved));
-  },
-  removeSaved(u){let saved=JSON.parse(localStorage.getItem('tla-saved-users')||'[]');saved=saved.filter(x=>x!==u);localStorage.setItem('tla-saved-users',JSON.stringify(saved));this.renderSaved();},
-  renderSaved(){
-    const saved=JSON.parse(localStorage.getItem('tla-saved-users')||'[]');
-    const box=el('saved-box'),list=el('saved-chips');
-    if(!saved.length){box.style.display='none';return;}
-    box.style.display='block';
-    list.innerHTML=saved.map(u=>`<span class="saved-chip" onclick="TikTok.selectMember('${esc(u)}')">@${esc(u)}<span class="saved-chip-x" onclick="event.stopPropagation();TikTok.removeSaved('${esc(u)}')">✕</span></span>`).join('');
-  },
-  startGuide(){this.guideStep=0;this.readStep();},
-  readStep(){const t=this.guideSteps[this.guideStep];el('guide-text').textContent=t;el('guide-step').textContent=`Step ${this.guideStep+1} of ${this.guideSteps.length}`;Speech.cancel();Speech.browserSpeak(t,{rate:.92,volume:1.0});},
-  guideNext(){if(this.guideStep<this.guideSteps.length-1){this.guideStep++;this.readStep();}},
-  guidePrev(){if(this.guideStep>0){this.guideStep--;this.readStep();}},
-  repeatGuide(){Speech.cancel();Speech.browserSpeak(this.guideSteps[this.guideStep],{rate:.92,volume:1.0});}
-};
 
-socket.on('tiktok-connecting',({username})=>{Speech.speak(`Connecting to ${username}'s live stream. Please wait.`);UI.log('system','TikTok',`Connecting to @${username}...`,'🔄');});
-socket.on('tiktok-connected',({username})=>{
-  S.tiktokConnected=true;TikTok.closeModal();
-  el('btn-connect').textContent='🔴 DISCONNECT';el('btn-connect').classList.add('live');
-  App.goLive();
-  Queue.add(`Connected to ${username}'s TikTok live stream!`,'system',2,SoundManager.get('milestone'));
-  UI.log('system','TikTok',`Connected to @${username}`,'✅');
-  el('live-dot').classList.add('on');el('live-label').textContent='LIVE';
-});
-socket.on('tiktok-disconnected',({reason})=>{
-  S.tiktokConnected=false;
-  el('btn-connect').textContent='🔴 CONNECT TO TIKTOK';el('btn-connect').classList.remove('live');
-  Queue.add(`Disconnected from TikTok. ${reason}`,'alert',2,SoundManager.get('alert'));
-  UI.log('alert','TikTok',`Disconnected: ${reason}`,'❌');
-});
-socket.on('tiktok-error',({message})=>{
-  let friendly = message || 'Connection failed.';
-  // Remove any session ID references from error messages
-  friendly = friendly.replace(/session id.*?[\.\!]/gi, '').trim();
-  friendly = friendly.replace(/log out of tiktok.*?new one[\.\!]?/gi, '').trim();
-  if (!friendly || friendly === 'SESSION_ID_NEEDED') {
-    friendly = 'Connection failed. Make sure the stream is live and try again.';
+  closeModal() { el('connect-modal').classList.add('hidden'); Speech.cancel(); },
+  selectMember(handle) { el('modal-username').value = handle; el('modal-username').focus(); },
+
+  connect() {
+    const username = el('modal-username').value.trim().replace('@','');
+    const apiKey   = el('modal-apikey').value.trim();
+    if (!username) { el('modal-err').textContent = 'Please enter a username.'; return; }
+    if (!apiKey)   { el('modal-err').textContent = 'Please enter your TikTool API key.'; return; }
+    localStorage.setItem('tla-tiktool-key', apiKey);
+    this.saveUsername(username);
+    this.currentUsername = username;
+    this.doConnect(username, apiKey);
+  },
+
+  doConnect(username, apiKey) {
+    el('modal-err').textContent = 'Connecting...';
+    Speech.speak(`Connecting to ${username}'s live stream. Please wait.`);
+    UI.log('system','TikTok',`Connecting to @${username}...`,'🔄');
+
+    // Close any existing connection
+    if (this.ws) { try { this.ws.close(); } catch(_) {} this.ws = null; }
+
+    const url = `wss://api.tik.tools?uniqueId=${encodeURIComponent(username)}&apiKey=${encodeURIComponent(apiKey)}`;
+    const ws = new WebSocket(url);
+    this.ws = ws;
+
+    ws.onopen = () => {
+      console.log('[TikTool] Connected');
+    };
+
+    ws.onmessage = (raw) => {
+      try {
+        const msg = JSON.parse(raw.data);
+        const d = msg.data || {};
+        const user = d.user?.uniqueId || d.uniqueId || 'Someone';
+
+        switch (msg.event) {
+          case 'roomInfo':
+            // Successfully connected to a live room
+            if (!S.tiktokConnected) {
+              S.tiktokConnected = true;
+              TikTok.closeModal();
+              el('btn-connect').textContent = '🔴 DISCONNECT';
+              el('btn-connect').classList.add('live');
+              el('live-dot').classList.add('on');
+              el('live-label').textContent = 'LIVE';
+              App.goLive();
+              Queue.add(`Connected to ${username}'s TikTok live stream!`, 'system', 2, SoundManager.get('milestone'));
+              UI.log('system','TikTok',`Connected to @${username}`,'✅');
+            }
+            break;
+
+          case 'chat':
+            Events.comment(user, d.comment || '');
+            break;
+
+          case 'gift':
+            if (d.isFinal !== false) { // only fire on final streak event
+              Events.gift(user, d.giftName || 'Gift', d.diamondCount || 0, '🎁', d.repeatCount || 1);
+            }
+            break;
+
+          case 'social':
+          case 'follow':
+            Events.follow(user);
+            break;
+
+          case 'share':
+            Events.share(user);
+            break;
+
+          case 'subscribe':
+            Events.subscribe(user);
+            break;
+
+          case 'like':
+            Events.like(user, d.likeCount || 1);
+            break;
+
+          case 'roomUserSeq':
+          case 'roomUser':
+            if (d.viewerCount) Events.viewers(d.viewerCount);
+            break;
+
+          case 'streamEnd':
+            TikTok.handleDisconnect('Stream has ended.');
+            break;
+
+          case 'error':
+            const errMsg = d.message || msg.message || 'Connection error.';
+            console.error('[TikTool] Error:', errMsg);
+            el('modal-err').textContent = errMsg;
+            UI.log('alert','TikTok', errMsg,'⚠');
+            break;
+        }
+      } catch(e) { console.error('[TikTool] Parse error:', e); }
+    };
+
+    ws.onerror = (e) => {
+      console.error('[TikTool] WebSocket error');
+      el('modal-err').textContent = 'Connection error. Check your API key and make sure the stream is live.';
+      UI.log('alert','TikTok','WebSocket error','⚠');
+    };
+
+    ws.onclose = (e) => {
+      console.log('[TikTool] Closed, code:', e.code);
+      if (S.tiktokConnected) {
+        TikTok.handleDisconnect('Disconnected from TikTok.');
+      } else if (e.code === 4001 || e.code === 4003) {
+        el('modal-err').textContent = 'Invalid API key. Please check your TikTool API key and try again.';
+      } else if (e.code === 4004) {
+        el('modal-err').textContent = 'Stream not found or not live. Make sure the stream is already live.';
+      } else if (e.code !== 1000) {
+        el('modal-err').textContent = 'Connection failed. Make sure the stream is live and try again.';
+      }
+    };
+  },
+
+  handleDisconnect(reason) {
+    S.tiktokConnected = false;
+    this.ws = null;
+    el('btn-connect').textContent = '🔴 CONNECT TO TIKTOK';
+    el('btn-connect').classList.remove('live');
+    el('live-dot').classList.remove('on');
+    el('live-label').textContent = 'OFFLINE';
+    Queue.add(`Disconnected. ${reason}`, 'alert', 2);
+    UI.log('alert','TikTok', reason,'❌');
+  },
+
+  disconnect() {
+    if (this.ws) { try { this.ws.close(1000); } catch(_) {} this.ws = null; }
+    this.handleDisconnect('Disconnected manually.');
+  },
+
+  saveUsername(u) {
+    let saved = JSON.parse(localStorage.getItem('tla-saved-users') || '[]');
+    saved = saved.filter(x => x !== u); saved.unshift(u); saved = saved.slice(0,8);
+    localStorage.setItem('tla-saved-users', JSON.stringify(saved));
+  },
+  removeSaved(u) {
+    let saved = JSON.parse(localStorage.getItem('tla-saved-users') || '[]');
+    saved = saved.filter(x => x !== u);
+    localStorage.setItem('tla-saved-users', JSON.stringify(saved));
+    this.renderSaved();
+  },
+  renderSaved() {
+    const saved = JSON.parse(localStorage.getItem('tla-saved-users') || '[]');
+    const box = el('saved-box'), list = el('saved-chips');
+    if (!saved.length) { box.style.display='none'; return; }
+    box.style.display = 'block';
+    list.innerHTML = saved.map(u =>
+      `<span class="saved-chip" onclick="TikTok.selectMember('${esc(u)}')">@${esc(u)}<span class="saved-chip-x" onclick="event.stopPropagation();TikTok.removeSaved('${esc(u)}')">✕</span></span>`
+    ).join('');
   }
-  el('modal-err').textContent = friendly;
-  UI.log('alert','TikTok',message,'⚠');
-});
-socket.on('event',data=>{
-  switch(data.type){
-    case 'comment':      Events.comment(data.username,data.text); break;
-    case 'gift':         Events.gift(data.username,data.giftName,data.coins,data.emoji,data.repeatCount); break;
-    case 'follow':       Events.follow(data.username); break;
-    case 'like':         Events.like(data.username,data.count); break;
-    case 'share':        Events.share(data.username); break;
-    case 'subscribe':    Events.subscribe(data.username); break;
-    case 'viewer_count': Events.viewers(data.count); break;
+};
   }
 });
 
@@ -1189,7 +1259,7 @@ const App={
     UI.log('system','Ended',summary,'🔴');
     el('live-dot').classList.remove('on');el('live-label').textContent='ENDED';
     el('btn-connect').textContent='🔴 CONNECT TO TIKTOK';el('btn-connect').classList.remove('live');
-    if(S.tiktokConnected)socket.emit('disconnect-tiktok');
+    if(S.tiktokConnected) TikTok.disconnect();
   },
   handleKey(e){
     if(['INPUT','TEXTAREA','SELECT'].includes(document.activeElement.tagName))return;
