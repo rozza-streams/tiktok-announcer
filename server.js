@@ -92,24 +92,56 @@ app.post('/api/gifts/learn', (req, res) => {
 });
 
 // ── LIVE STATUS CHECK ─────────────────────────────────────
+// Per-username cache with 30s TTL — protects TikTok from rapid Check-Live spam.
+const LIVE_CACHE = new Map(); // username -> { value:boolean, ts:number }
+const LIVE_TTL_MS = 30 * 1000;
+
+function fetchLiveStatus(clean) {
+  return new Promise((resolve) => {
+    const opts = { hostname:'www.tiktok.com', path:`/@${clean}/live`, method:'GET',
+      headers:{'User-Agent':'Mozilla/5.0','Accept':'text/html'}, timeout:6000 };
+    const r = https.request(opts, (r2) => {
+      let d=''; r2.on('data',c=>{d+=c;if(d.length>30000)r.destroy();});
+      r2.on('end',()=>resolve(d.includes('"isLive":true')||d.includes('"liveStatus":1')||d.includes('liveRoomUserInfo')));
+    });
+    r.on('error',()=>resolve(false)); r.on('timeout',()=>{r.destroy();resolve(false);}); r.end();
+  });
+}
+
 app.post('/api/live-batch', async (req, res) => {
   const usernames = (req.body.usernames||[]).slice(0,20);
+  const now = Date.now();
   const results = {};
-  await Promise.all(usernames.map(async (u) => {
+  const toFetch = [];
+
+  // Serve fresh entries from cache, queue stale/missing for fetch.
+  for (const u of usernames) {
     const clean = u.replace('@','').trim();
+    if (!clean) continue;
+    const hit = LIVE_CACHE.get(clean);
+    if (hit && (now - hit.ts) < LIVE_TTL_MS) {
+      results[clean] = hit.value;
+    } else {
+      toFetch.push(clean);
+    }
+  }
+
+  await Promise.all(toFetch.map(async (clean) => {
     try {
-      const live = await new Promise((resolve) => {
-        const opts = { hostname:'www.tiktok.com', path:`/@${clean}/live`, method:'GET',
-          headers:{'User-Agent':'Mozilla/5.0','Accept':'text/html'}, timeout:6000 };
-        const r = https.request(opts, (r2) => {
-          let d=''; r2.on('data',c=>{d+=c;if(d.length>30000)r.destroy();});
-          r2.on('end',()=>resolve(d.includes('"isLive":true')||d.includes('"liveStatus":1')||d.includes('liveRoomUserInfo')));
-        });
-        r.on('error',()=>resolve(false)); r.on('timeout',()=>{r.destroy();resolve(false);}); r.end();
-      });
+      const live = await fetchLiveStatus(clean);
+      LIVE_CACHE.set(clean, { value: live, ts: Date.now() });
       results[clean] = live;
-    } catch(_) { results[clean]=false; }
+    } catch(_) {
+      results[clean] = false;
+    }
   }));
+
+  // Opportunistic cache cleanup — drop entries older than 5 min.
+  if (LIVE_CACHE.size > 200) {
+    const cutoff = now - 5*60*1000;
+    for (const [k,v] of LIVE_CACHE) if (v.ts < cutoff) LIVE_CACHE.delete(k);
+  }
+
   res.json(results);
 });
 
@@ -271,3 +303,4 @@ if (process.env.PROJECT_DOMAIN) {
 
 const PORT = process.env.PORT || 3000;
 httpServer.listen(PORT, () => console.log(`\n🎙 LiveAnnouncer — port ${PORT}\n`));
+
