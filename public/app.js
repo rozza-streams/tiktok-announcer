@@ -1406,12 +1406,12 @@ const UI={
   openSettings(){
     const p=el('settings-panel'),o=el('settings-overlay');
     if(p)p.classList.remove('hidden');if(o)o.classList.remove('hidden');
-    setTimeout(()=>if(p)p.classList.add('open'),10);
+    setTimeout(() => { if(p) p.classList.add('open'); }, 10);
   },
   closeSettings(){
     const p=el('settings-panel'),o=el('settings-overlay');
     if(p)p.classList.remove('open');
-    setTimeout(()=>{if(p)p.classList.add('hidden');if(o)o.classList.add('hidden');},300);
+    setTimeout(() => { if(p) p.classList.add('hidden'); if(o) o.classList.add('hidden'); }, 300);
   }
 };
 
@@ -1434,7 +1434,11 @@ const Wizard={
     const s=this.steps[this.step],total=this.steps.length;
     if(el('wiz-dots'))el('wiz-dots').innerHTML=Array.from({length:total},(_,i)=>`<div class="wiz-dot${i<=this.step?' on':''}"></div>`).join('');
     if(el('wiz-step'))el('wiz-step').textContent=`Step ${this.step+1} of ${total}`;
-    setTimeout(()=>{Speech.browserSpeak(s.q,{rate:1.0,volume:1.0});if(el('wiz-speaking'))el('wiz-speaking').textContent='🔊 Speaking...';setTimeout(()=>if(el('wiz-speaking'))el('wiz-speaking').textContent='',3500);},200);
+    setTimeout(() => { 
+      Speech.browserSpeak(s.q,{rate:1.0,volume:1.0});
+      if(el('wiz-speaking')) el('wiz-speaking').textContent='🔊 Speaking...';
+      setTimeout(() => { if(el('wiz-speaking')) el('wiz-speaking').textContent=''; }, 3500);
+    }, 200);
     const c=el('wiz-content');
     if(!c)return;
     c.innerHTML=`<p class="wiz-text">${s.q}</p>`;
@@ -1464,7 +1468,7 @@ const Wizard={
     setTimeout(()=>{
       Speech.speak(`Welcome ${a.name||'Streamer'}! LiveAnnouncer is ready. Open Settings to choose your voice and customise sounds. Press Connect to TikTok when you are live. Created by RB and Claude AI. Enjoy your stream!`,{rate:S.speechRate,volume:1.0});
       UI.log('system','System','🟢 LiveAnnouncer ready!','🟢');
-      if(a.vc)setTimeout(()=>{if(el('vc-toggle'))el('vc-toggle').checked=true;App.setVoiceCommands(true);},4000);
+      if(a.vc)setTimeout(() => { if(el('vc-toggle')) el('vc-toggle').checked=true; App.setVoiceCommands(true); }, 4000);
     },300);
   }
 };
