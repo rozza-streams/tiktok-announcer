@@ -168,11 +168,15 @@ const Audio = {
 const Speech = {
   voices:[],
   loadVoices() {
-    this.voices = speechSynthesis.getVoices().sort((a,b)=>{
-      const ae=a.lang.startsWith('en')?0:1, be=b.lang.startsWith('en')?0:1;
-      if(ae!==be) return ae-be;
-      return a.lang.localeCompare(b.lang)||a.name.localeCompare(b.name);
-    });
+    // English voices only — sorted by quality (local/neural first)
+    this.voices = speechSynthesis.getVoices()
+      .filter(v => v.lang.startsWith('en'))
+      .sort((a,b) => {
+        // Local (higher quality) voices first
+        if(a.localService && !b.localService) return -1;
+        if(!a.localService && b.localService) return 1;
+        return a.name.localeCompare(b.name);
+      });
     const sel=el('voice-select');
     if (!sel||!this.voices.length) return;
     const saved=localStorage.getItem('tla-voice');
