@@ -1,5 +1,34 @@
 'use strict';
-const socket = io();
+// Force websocket-only transport — fixes socket.io 400 Bad Request errors on
+// reverse proxies (Leapcell, Render free, Cloudflare etc.) that don't preserve
+// sticky sessions for the HTTP long-polling fallback handshake.
+const socket = io({ transports: ['websocket'], upgrade: false });
+
+// ── RECONNECT BADGE ──────────────────────────────────────
+// Shows a small pill in the top bar whenever the socket drops, with attempt
+// count, and hides automatically once reconnected.
+(function wireReconnectBadge(){
+  const show = (text, failed=false) => {
+    const b = document.getElementById('reconnect-badge');
+    const l = document.getElementById('reconnect-label');
+    if (!b || !l) return;
+    l.textContent = text;
+    b.classList.remove('hidden');
+    b.classList.toggle('failed', failed);
+  };
+  const hide = () => {
+    const b = document.getElementById('reconnect-badge');
+    if (b) b.classList.add('hidden');
+  };
+  socket.on('disconnect', (reason) => {
+    show(reason === 'io server disconnect' ? 'Server closed connection' : 'Reconnecting…');
+  });
+  socket.on('connect_error', () => show('Reconnecting…'));
+  socket.io.on('reconnect_attempt', (n) => show(`Reconnecting… (try ${n})`));
+  socket.io.on('reconnect_failed',  () => show('Connection lost — refresh page', true));
+  socket.io.on('reconnect',         () => hide());
+  socket.on('connect',              () => hide());
+})();
 
 // ══════════════════════════════════════════════════════════
 // CONSTANTS
@@ -673,32 +702,26 @@ const DiamondGlow = {
     DIAMOND_GLOW.forEach(m => this.liveStatus[m.handle] = 'checking');
     this.render(renderId);
 
-    const checks = DIAMOND_GLOW.map(async m => {
-      try {
-        // Use allorigins CORS proxy to fetch TikTok live page
-        const url = `https://api.allorigins.win/get?url=${encodeURIComponent(`https://www.tiktok.com/@${m.handle}/live`)}`;
-        const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
-        if (res.ok) {
-          const data = await res.json();
-          const html = data.contents || '';
-          // Check for live indicators in the page content
-          const isLive = html.includes('"isLive":true') ||
-                         html.includes('"liveStatus":1') ||
-                         html.includes('liveRoomUserInfo') ||
-                         html.includes('"status":2') ||
-                         (html.includes('LIVE') && html.includes(m.handle));
-          this.liveStatus[m.handle] = isLive;
-        } else {
-          this.liveStatus[m.handle] = false;
-        }
-      } catch(_) {
-        this.liveStatus[m.handle] = false;
+    // Use server-side /api/live-batch endpoint to avoid browser CORS restrictions.
+    // The server fetches TikTok directly (no CORS), in batches of up to 20.
+    const handles = DIAMOND_GLOW.map(m => m.handle);
+    try {
+      const res = await fetch('/api/live-batch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ usernames: handles }),
+        signal: AbortSignal.timeout(15000)
+      });
+      if (res.ok) {
+        const data = await res.json();
+        DIAMOND_GLOW.forEach(m => {
+          this.liveStatus[m.handle] = !!data[m.handle];
+        });
+      } else {
+        DIAMOND_GLOW.forEach(m => this.liveStatus[m.handle] = false);
       }
-    });
-
-    // Check in batches of 4 to avoid hammering the proxy
-    for (let i = 0; i < checks.length; i += 4) {
-      await Promise.all(checks.slice(i, i + 4));
+    } catch (_) {
+      DIAMOND_GLOW.forEach(m => this.liveStatus[m.handle] = false);
     }
     this.render(renderId);
   }
@@ -1031,13 +1054,10 @@ const TikTok={
     el('connect-modal').classList.remove('hidden');
     el('modal-err').textContent='';
     el('modal-username').value='';
-    const saved=localStorage.getItem('tla-sessionid');
-    if(saved) el('modal-session').value=saved;
     DiamondGlow.render('dg-modal-list');
     this.renderSaved();
     setTimeout(()=>el('modal-username').focus(),100);
     el('modal-username').onkeydown=e=>{if(e.key==='Enter')TikTok.connect();};
-    el('modal-session').onkeydown  =e=>{if(e.key==='Enter')TikTok.connect();};
   },
   closeModal(){el('connect-modal').classList.add('hidden');Speech.cancel();},
   selectMember(handle){el('modal-username').value=handle;el('modal-username').focus();},
