@@ -92,7 +92,7 @@ const SOUND_NAMES = Object.keys(SOUNDS);
 // STATE
 // ══════════════════════════════════════════════════════════
 const S = {
-  isLive:false, isMuted:false, tiktokConnected:false,
+  isLive:false, isMuted:false, tiktokConnected:false, connectionTime: 0,
   startTime:null, streamDuration:0, streamInterval:null,
   viewers:0, peakViewers:0,
   followsTonight:0, coinsTonight:0, giftsTonight:0, commentsTonight:0, likesTonight:0,
@@ -105,7 +105,7 @@ const S = {
   elevenLabsKey:'', elevenLabsVoiceId:'',
   playHTKey:'', playHTUserId:'', playHTVoiceId:'',
   queue:[], isAnnouncing:false, lastText:'', lastType:'system',
-  spamTracker:{}, viewerHistory:{}, giftStreaks:{}, giftStreakTimers:{},
+  spamTracker:{}, viewerHistory:{}, giftStreaks:{}, giftStreakTimers:{}, giftHistory:{},
   giftCounts:{}, commentCounts:{},
   viewerMilestones:new Set(), followMilestones:new Set(),
   activitySpike:[], silenceTimer:null, firstCommentDone:false,
@@ -832,6 +832,14 @@ const Events = {
     });
   },
 
+  join(username) {
+    if(el('en-joins') && !en('en-joins')) return;
+    
+    // Give joins a low priority (8) so they get pushed out of the way if it gets too busy
+    Queue.add(`${username} joined the stream.`, 'system', 8);
+    UI.log('system', username, 'Joined', '👋');
+  },
+
   like(username,count){
     S.likesTonight+=count||1;
     if(el('s-likes'))el('s-likes').textContent=S.likesTonight;
@@ -843,9 +851,6 @@ const Events = {
     UI.log('like',username,`❤ Liked`,'❤');
   },
 
-  // ══════════════════════════════════════════════════════════
-  // THE NEW DEBOUNCED GIFT FIX
-  // ══════════════════════════════════════════════════════════
   gift(username, giftName, coins, emoji, repeatCount, groupId) {
     if(!en('en-gifts')) return;
 
@@ -854,7 +859,6 @@ const Events = {
       GiftLibrary.learnGift(giftName,coins,emoji||'🎁');
     }
 
-    // Give this specific gift combo a unique fingerprint
     const streakKey = username + '_' + gid + (groupId ? '_' + groupId : '');
 
     if (!S.giftStreaks) S.giftStreaks = {};
@@ -863,31 +867,26 @@ const Events = {
 
     const now = Date.now();
 
-    // The Anti-Echo Filter: Check if we JUST announced this exact combo in the last 15 seconds.
-    // If we did, TikTok is just sending a delayed summary event. We completely ignore it.
     if (S.giftHistory[streakKey] && (now - S.giftHistory[streakKey].time < 15000)) {
       if (groupId) return; 
       if (!groupId && repeatCount === S.giftHistory[streakKey].count) return;
     }
 
     if (S.giftStreaks[streakKey]) {
-      // They are tapping fast! Keep tracking the total count
       if (repeatCount > 1) {
         S.giftStreaks[streakKey].count = Math.max(S.giftStreaks[streakKey].count, repeatCount);
       } else {
-        S.giftStreaks[streakKey].count++; // Manual increment for backup
+        S.giftStreaks[streakKey].count++; 
       }
       clearTimeout(S.giftStreakTimers[streakKey]);
     } else {
       S.giftStreaks[streakKey] = { name: giftName, count: repeatCount || 1, baseCoins: coins, emoji: emoji || '🎁' };
     }
 
-    // Wait 3.5 seconds. If no more taps come in, bundle it all together and announce!
     S.giftStreakTimers[streakKey] = setTimeout(() => {
       const data = S.giftStreaks[streakKey];
       delete S.giftStreaks[streakKey];
       
-      // Save this combo to the history filter so we don't accidentally repeat it
       S.giftHistory[streakKey] = { count: data.count, time: Date.now() };
 
       const totalCoins = data.count * data.baseCoins;
@@ -915,7 +914,6 @@ const Events = {
 
       let msg, priority, opts={};
       
-      // Basic pluralization
       const plural = data.count > 1 ? 's' : '';
 
       if(size==='large'){
@@ -1124,6 +1122,7 @@ const TikTok = {
 
     ws.onopen = () => {
       console.log('[Euler] WebSocket open');
+      S.connectionTime = Date.now();
       this.pingInterval = setInterval(() => {
         if (ws.readyState === WebSocket.OPEN) {
           try { ws.send(JSON.stringify({ type: 'ping' })); } catch(_) {}
@@ -1218,6 +1217,7 @@ const TikTok = {
       type.includes('Room') || type.includes('Chat')
     )) {
       S.tiktokConnected = true;
+      S.connectionTime = Date.now(); 
       TikTok.closeModal();
       if(el('btn-connect')){
         el('btn-connect').textContent = '🔴 DISCONNECT';
@@ -1228,6 +1228,10 @@ const TikTok = {
       App.goLive();
       Queue.add(`Connected to ${username}'s TikTok live stream!`, 'system', 2, SoundManager.get('milestone'));
       UI.log('system','TikTok',`Connected to @${username}`,'✅');
+    }
+
+    if (S.connectionTime && Date.now() - S.connectionTime < 3000) {
+      return; 
     }
 
     switch(type) {
@@ -1249,9 +1253,14 @@ const TikTok = {
       }
       
       case 'WebcastSocialMessage': {
-        const action = (msg.displayType || msg.action || rawMsg.event || '').toLowerCase();
-        if (action.includes('follow')) Events.follow(user);
-        else if (action.includes('share')) Events.share(user);
+        const actionStr = String(msg.displayType || rawMsg.event || '').toLowerCase();
+        const actionNum = Number(msg.action);
+        
+        if (actionStr.includes('follow') || actionNum === 1 || actionNum === 2) {
+          Events.follow(user);
+        } else if (actionStr.includes('share') || actionNum === 3) {
+          Events.share(user);
+        }
         break;
       }
       
@@ -1260,8 +1269,10 @@ const TikTok = {
         break;
       }
       
-      case 'WebcastMemberMessage': 
+      case 'WebcastMemberMessage': {
+        Events.join(user);
         break;
+      }
         
       case 'WebcastRoomUserSeqMessage': {
         const viewers = msg.viewerCount || msg.totalUser || msg.viewers;
