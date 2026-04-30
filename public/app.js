@@ -307,14 +307,6 @@ const VoicePicker = {
     localStorage.setItem('tla-voice',v.name);
     Speech.cancel();
     Speech.browserSpeak('Hi! This is how I will sound during your live stream. Welcome everyone!',{rate:S.speechRate,volume:1.0});
-  },
-  saveKeys() {
-    S.elevenLabsKey   = el('el-key')?.value?.trim()||'';
-    S.playHTKey       = el('ph-key')?.value?.trim()||'';
-    S.playHTUserId    = el('ph-user')?.value?.trim()||'';
-    localStorage.setItem('tla-elkey',S.elevenLabsKey);
-    localStorage.setItem('tla-phkey',S.playHTKey);
-    localStorage.setItem('tla-phuser',S.playHTUserId);
   }
 };
 
@@ -686,13 +678,6 @@ const Settings = {
       if(d.vol!=null)   App.setVolume(d.vol*100);
       if(d.sfx!=null)   App.setSfxVolume(d.sfx*100);
     }catch(_){}
-    // Load API keys
-    S.elevenLabsKey=localStorage.getItem('tla-elkey')||'';
-    S.playHTKey    =localStorage.getItem('tla-phkey')||'';
-    S.playHTUserId =localStorage.getItem('tla-phuser')||'';
-    if(el('el-key'))  el('el-key').value=S.elevenLabsKey;
-    if(el('ph-key'))  el('ph-key').value=S.playHTKey;
-    if(el('ph-user')) el('ph-user').value=S.playHTUserId;
     Nicknames.load(); Keywords.load(); Loyalty.load();
     SoundManager.load(); GiftLibrary.load();
     DiamondGlow.render('dg-grid'); DiamondGlow.render('dg-modal-list');
