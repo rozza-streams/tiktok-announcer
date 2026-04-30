@@ -180,9 +180,48 @@ const Speech = {
       const star=v.localService?' ★':'';
       return `<option value="${i}" ${saved===v.name?'selected':''}>${v.name} — ${v.lang}${star}</option>`;
     }).join('');
-    const idx=this.voices.findIndex(v=>v.name===saved);
-    if(idx>=0){sel.value=idx;S.selectedVoice=this.voices[idx];}
-    else if(this.voices.length) S.selectedVoice=this.voices[0];
+
+    // Try to restore saved voice
+    const savedIdx=this.voices.findIndex(v=>v.name===saved);
+    if(savedIdx>=0){
+      sel.value=savedIdx;
+      S.selectedVoice=this.voices[savedIdx];
+      return;
+    }
+
+    // Auto-select best quality voice — priority order
+    const preferred = [
+      // Microsoft Edge neural voices (highest quality, free)
+      'Microsoft Ryan Online','Microsoft Sonia Online','Microsoft Libby Online',
+      'Microsoft Aria Online','Microsoft Guy Online','Microsoft Jenny Online',
+      'Microsoft Emma Online','Microsoft Brian Online','Microsoft Andrew Online',
+      // Apple voices
+      'Samantha','Daniel','Karen','Moira','Tessa',
+      // Google voices
+      'Google UK English Female','Google UK English Male',
+      'Google US English','Google US English 2',
+      // Any local English voice
+    ];
+
+    let best = null;
+    // First try preferred list in order
+    for (const name of preferred) {
+      const v = this.voices.find(v => v.name.includes(name));
+      if (v) { best = v; break; }
+    }
+    // Fall back to any local English voice
+    if (!best) best = this.voices.find(v => v.localService && v.lang.startsWith('en'));
+    // Fall back to any English voice
+    if (!best) best = this.voices.find(v => v.lang.startsWith('en'));
+    // Last resort — first available
+    if (!best && this.voices.length) best = this.voices[0];
+
+    if (best) {
+      const idx = this.voices.indexOf(best);
+      sel.value = idx;
+      S.selectedVoice = best;
+      localStorage.setItem('tla-voice', best.name);
+    }
   },
 
   async speak(text, opts={}) {
