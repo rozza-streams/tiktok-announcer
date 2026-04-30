@@ -52,10 +52,6 @@
       <div class="tb-stat"><span class="tb-num" id="tb-queue">0</span><span class="tb-lbl">Queue</span></div>
     </div>
     <div class="tb-right">
-      <div class="reconnect-badge hidden" id="reconnect-badge" role="status" aria-live="polite">
-        <span class="rb-spin"></span>
-        <span id="reconnect-label">Reconnecting…</span>
-      </div>
       <div class="voice-pill" id="voice-pill">
         <span class="voice-dot" id="voice-dot"></span>
         <span id="voice-label">MIC OFF</span>
@@ -130,7 +126,7 @@
       <button class="mega-mute" id="mute-btn" onclick="App.toggleMute()" aria-label="Mute [M]">
         🔊 UNMUTED
       </button>
-      <button class="mega-connect" id="btn-connect" onclick="TikTok.showConnectModal()" aria-label="Connect to TikTok">
+      <button class="mega-connect" id="btn-connect" onclick="S.tiktokConnected ? TikTok.disconnect() : TikTok.showConnectModal()" aria-label="Connect to TikTok">
         🔴 CONNECT TO TIKTOK
       </button>
 
@@ -360,6 +356,10 @@
       <div class="saved-chips" id="saved-chips"></div>
     </div>
 
+    <!-- TIKTOOL API KEY -->
+    <div class="modal-label">TikTool API Key <span style="font-size:.75rem;color:#888;font-weight:400">— get yours free at tik.tools</span></div>
+    <input type="text" class="modal-inp" id="modal-apikey" placeholder="Paste your TikTool API key here" autocomplete="off" style="margin-bottom:.85rem">
+
     <div class="modal-btns">
       <button class="modal-go" onclick="TikTok.connect()">Connect</button>
       <button class="modal-cancel" onclick="TikTok.closeModal()">Cancel</button>
@@ -372,4 +372,3 @@
 <script src="app.js"></script>
 </body>
 </html>
-
