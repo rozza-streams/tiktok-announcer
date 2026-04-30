@@ -673,23 +673,20 @@ const DiamondGlow = {
     DIAMOND_GLOW.forEach(m => this.liveStatus[m.handle] = 'checking');
     this.render(renderId);
 
-    // Check each member using TikTok oEmbed API
-    // oEmbed returns data for live streams — if it returns a valid title
-    // containing "LIVE" or similar, the user is live
     const checks = DIAMOND_GLOW.map(async m => {
       try {
-        const res = await fetch(
-          `https://www.tiktok.com/oembed?url=https://www.tiktok.com/@${m.handle}/live`,
-          { mode: 'cors' }
-        );
+        // Use allorigins CORS proxy to fetch TikTok live page
+        const url = `https://api.allorigins.win/get?url=${encodeURIComponent(`https://www.tiktok.com/@${m.handle}/live`)}`;
+        const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
         if (res.ok) {
           const data = await res.json();
-          // If oEmbed returns a title with LIVE in it or a valid live URL, they are live
-          const title = (data.title || '').toLowerCase();
-          const authorUrl = (data.author_url || '').toLowerCase();
-          const isLive = title.includes('live') || 
-                        (data.html && data.html.includes('live')) ||
-                        res.url.includes('live');
+          const html = data.contents || '';
+          // Check for live indicators in the page content
+          const isLive = html.includes('"isLive":true') ||
+                         html.includes('"liveStatus":1') ||
+                         html.includes('liveRoomUserInfo') ||
+                         html.includes('"status":2') ||
+                         (html.includes('LIVE') && html.includes(m.handle));
           this.liveStatus[m.handle] = isLive;
         } else {
           this.liveStatus[m.handle] = false;
@@ -699,7 +696,10 @@ const DiamondGlow = {
       }
     });
 
-    await Promise.all(checks);
+    // Check in batches of 4 to avoid hammering the proxy
+    for (let i = 0; i < checks.length; i += 4) {
+      await Promise.all(checks.slice(i, i + 4));
+    }
     this.render(renderId);
   }
 };
@@ -1084,12 +1084,14 @@ socket.on('tiktok-disconnected',({reason})=>{
   UI.log('alert','TikTok',`Disconnected: ${reason}`,'❌');
 });
 socket.on('tiktok-error',({message})=>{
-  if(message==='SESSION_ID_NEEDED'){
-    el('modal-err').textContent='Session ID needed. Tap the Session ID section above and follow the instructions.';
-    Speech.speak('Your session ID is needed. Tap the Session ID section and press the button to hear step by step instructions.',{rate:.95,volume:1.0});
-  }else{
-    el('modal-err').textContent=message||'Connection failed.';
+  let friendly = message || 'Connection failed.';
+  // Remove any session ID references from error messages
+  friendly = friendly.replace(/session id.*?[\.\!]/gi, '').trim();
+  friendly = friendly.replace(/log out of tiktok.*?new one[\.\!]?/gi, '').trim();
+  if (!friendly || friendly === 'SESSION_ID_NEEDED') {
+    friendly = 'Connection failed. Make sure the stream is live and try again.';
   }
+  el('modal-err').textContent = friendly;
   UI.log('alert','TikTok',message,'⚠');
 });
 socket.on('event',data=>{
