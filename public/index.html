@@ -356,25 +356,6 @@
       <div class="saved-chips" id="saved-chips"></div>
     </div>
 
-    <!-- SESSION ID -->
-    <details class="session-det">
-      <summary class="session-sum">🔑 Session ID — tap to set up (needed to connect)</summary>
-      <div class="session-body">
-        <p class="session-note">You only ever do this once. The app saves it forever.</p>
-        <button class="session-guide-btn" onclick="TikTok.startGuide()">🔊 Hear step by step instructions</button>
-        <div class="guide-box">
-          <div class="guide-step" id="guide-step"></div>
-          <div class="guide-text" id="guide-text">Press the button above to hear the instructions.</div>
-          <div class="guide-nav">
-            <button class="gnav-btn" onclick="TikTok.guidePrev()">◀ Back</button>
-            <button class="gnav-btn" onclick="TikTok.repeatGuide()">🔊 Repeat</button>
-            <button class="gnav-btn" onclick="TikTok.guideNext()">Next ▶</button>
-          </div>
-        </div>
-        <input type="text" class="session-input" id="modal-session" placeholder="Paste your sessionid cookie value here" autocomplete="off">
-      </div>
-    </details>
-
     <div class="modal-btns">
       <button class="modal-go" onclick="TikTok.connect()">Connect</button>
       <button class="modal-cancel" onclick="TikTok.closeModal()">Cancel</button>
