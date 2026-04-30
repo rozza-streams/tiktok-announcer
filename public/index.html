@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LiveAnnouncer — TikTok Live</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div class="flash-overlay" id="flash-overlay"></div>
+
+<!-- ══ WIZARD ════════════════════════════════════════════ -->
+<div id="wizard">
+  <div class="wiz-card">
+    <div class="wiz-logo">🎙</div>
+    <h1 class="wiz-title">LiveAnnouncer</h1>
+    <p class="wiz-by">Created by RB and Claude AI</p>
+    <p class="wiz-sub">Accessibility-first TikTok Live announcer</p>
+    <div class="wiz-dots" id="wiz-dots"></div>
+    <p class="wiz-step-lbl" id="wiz-step"></p>
+    <p class="wiz-speaking" id="wiz-speaking"></p>
+    <div id="wiz-content"></div>
+  </div>
+</div>
+
+<!-- ══ APP ════════════════════════════════════════════════ -->
+<div id="app" class="hidden">
+
+  <!-- TOP BAR -->
+  <header id="topbar">
+    <div class="tb-brand">
+      <span class="tb-logo">🎙</span>
+      <div class="tb-brand-text">
+        <span class="tb-name">LiveAnnouncer</span>
+        <span class="tb-by">Created by RB and Claude AI</span>
+      </div>
+    </div>
+    <div class="tb-status">
+      <div class="live-pill" id="live-pill">
+        <span class="live-dot" id="live-dot"></span>
+        <span id="live-label">OFFLINE</span>
+      </div>
+      <div id="stream-timer" class="timer">00:00:00</div>
+    </div>
+    <div class="tb-stats">
+      <div class="tb-stat"><span class="tb-num" id="tb-viewers">0</span><span class="tb-lbl">Viewers</span></div>
+      <div class="tb-stat"><span class="tb-num amber" id="tb-follows">0</span><span class="tb-lbl">Follows</span></div>
+      <div class="tb-stat"><span class="tb-num gold" id="tb-coins">0</span><span class="tb-lbl">Coins</span></div>
+      <div class="tb-stat"><span class="tb-num" id="tb-queue">0</span><span class="tb-lbl">Queue</span></div>
+    </div>
+    <div class="tb-right">
+      <div class="voice-pill" id="voice-pill">
+        <span class="voice-dot" id="voice-dot"></span>
+        <span id="voice-label">MIC OFF</span>
+      </div>
+      <button class="panic-btn" onclick="App.panic()" aria-label="Panic [P]">⚠ PANIC</button>
+    </div>
+  </header>
+
+  <!-- MAIN 3-COLUMN GRID -->
+  <main id="main">
+
+    <!-- ── LEFT PANEL ── -->
+    <aside id="panel-left">
+
+      <div class="p-section">
+        <div class="p-label">Now Announcing</div>
+        <div class="now-card" id="now-card">
+          <div class="now-type" id="np-type">IDLE</div>
+          <div class="now-text" id="np-text" role="status" aria-live="polite">
+            Ready — Connect to TikTok to begin
+          </div>
+          <div class="now-bar"><div class="now-fill" id="np-bar"></div></div>
+          <div class="now-queue-hint" id="queue-preview"></div>
+        </div>
+      </div>
+
+      <div class="p-section">
+        <div class="p-label">Stream Statistics</div>
+        <div class="stats-grid">
+          <div class="stat-card"><div class="stat-n amber" id="s-viewers">0</div><div class="stat-l">Viewers</div></div>
+          <div class="stat-card"><div class="stat-n green" id="s-follows">0</div><div class="stat-l">Follows</div></div>
+          <div class="stat-card"><div class="stat-n gold" id="s-coins">0</div><div class="stat-l">Coins</div></div>
+          <div class="stat-card"><div class="stat-n" id="s-gifts">0</div><div class="stat-l">Gifts</div></div>
+          <div class="stat-card"><div class="stat-n red" id="s-likes">0</div><div class="stat-l">Likes</div></div>
+          <div class="stat-card"><div class="stat-n blue" id="s-time">0m</div><div class="stat-l">Live</div></div>
+        </div>
+      </div>
+
+      <div class="p-section">
+        <div class="p-label">Gift Goal</div>
+        <div class="goal-card">
+          <div class="goal-row"><span id="goal-label">Set a goal in Settings</span><span id="goal-pct" class="gold"></span></div>
+          <div class="goal-track"><div class="goal-fill" id="goal-fill"></div></div>
+        </div>
+      </div>
+
+      <div class="p-section">
+        <div class="p-label">Top Gifter</div>
+        <div class="info-card" id="top-gifter">—</div>
+        <div class="p-label" style="margin-top:10px">Top Commenter</div>
+        <div class="info-card" id="top-commenter">—</div>
+      </div>
+
+    </aside>
+
+    <!-- ── CENTRE — EVENT LOG ── -->
+    <section id="centre">
+      <div class="log-header">
+        <span class="log-title">Live Event Log</span>
+        <div style="display:flex;gap:8px;align-items:center">
+          <span class="translate-badge" id="translate-badge" style="display:none">🌍 Translating</span>
+          <button onclick="UI.clearLog()" class="clear-btn">Clear</button>
+        </div>
+      </div>
+      <div id="log-container" role="log" aria-live="polite"></div>
+    </section>
+
+    <!-- ── RIGHT PANEL ── -->
+    <aside id="panel-right">
+
+      <!-- BIG BUTTONS -->
+      <button class="mega-mute" id="mute-btn" onclick="App.toggleMute()" aria-label="Mute [M]">
+        🔊 UNMUTED
+      </button>
+      <button class="mega-connect" id="btn-connect" onclick="TikTok.showConnectModal()" aria-label="Connect to TikTok">
+        🔴 CONNECT TO TIKTOK
+      </button>
+
+      <!-- QUICK ACTIONS -->
+      <div class="quick-grid">
+        <button class="qbtn" onclick="App.skip()">⏭<span>Skip</span></button>
+        <button class="qbtn" onclick="App.repeatLast()">↩<span>Repeat</span></button>
+        <button class="qbtn" onclick="App.readStats()">📊<span>Stats</span></button>
+        <button class="qbtn" onclick="App.waterBreak()">💧<span>Water</span></button>
+        <button class="qbtn danger" onclick="App.endStream()">🔴<span>End</span></button>
+        <button class="qbtn" onclick="UI.openSettings()">⚙<span>Settings</span></button>
+      </div>
+
+      <!-- VOLUME -->
+      <div class="vol-block">
+        <div class="vol-row"><span class="vol-lbl">Voice</span><input type="range" id="vol-slider" min="0" max="100" value="100" oninput="App.setVolume(this.value)"><span class="vol-val" id="vol-val">100%</span></div>
+        <div class="vol-row"><span class="vol-lbl">Sounds</span><input type="range" id="sfx-slider" min="0" max="100" value="100" oninput="App.setSfxVolume(this.value)"><span class="vol-val" id="sfx-val">100%</span></div>
+        <div class="vol-row"><span class="vol-lbl">Speed</span><input type="range" id="rate-slider" min="0.5" max="2.5" step="0.1" value="1.0" oninput="App.setRate(this.value)"><span class="vol-val" id="rate-val">1.0×</span></div>
+      </div>
+
+      <!-- MODES -->
+      <div class="mode-block">
+        <label class="mode-row"><span>Q&A Mode <kbd>Q</kbd></span><label class="tog"><input type="checkbox" id="qa-toggle" onchange="App.setQA(this.checked)"><span class="tog-s"></span></label></label>
+        <label class="mode-row"><span>Safe Mode</span><label class="tog"><input type="checkbox" id="safe-toggle" onchange="App.setSafe(this.checked)"><span class="tog-s"></span></label></label>
+        <label class="mode-row"><span>Calm Mode <kbd>C</kbd></span><label class="tog"><input type="checkbox" id="calm-toggle" onchange="App.setCalm(this.checked)"><span class="tog-s"></span></label></label>
+        <label class="mode-row"><span>Toxic Filter</span><label class="tog"><input type="checkbox" id="toxic-toggle" checked onchange="App.setToxic(this.checked)"><span class="tog-s"></span></label></label>
+        <label class="mode-row"><span>Auto-Translate</span><label class="tog"><input type="checkbox" id="translate-toggle" onchange="App.setTranslate(this.checked)"><span class="tog-s"></span></label></label>
+        <label class="mode-row"><span>Voice Commands</span><label class="tog"><input type="checkbox" id="vc-toggle" onchange="App.setVoiceCommands(this.checked)"><span class="tog-s"></span></label></label>
+      </div>
+
+    </aside>
+  </main>
+
+  <!-- BOTTOM BAR -->
+  <footer id="bottombar">
+    <div class="voice-cmd-indicator" id="vc-indicator">
+      <span class="vc-dot" id="vc-dot"></span>
+      <span id="vc-status">Say "LiveAnnouncer" to give a voice command</span>
+    </div>
+    <div class="hotkeys">
+      <kbd>M</kbd> Mute &nbsp;
+      <kbd>S</kbd> Skip &nbsp;
+      <kbd>R</kbd> Repeat &nbsp;
+      <kbd>P</kbd> Panic &nbsp;
+      <kbd>Q</kbd> Q&amp;A &nbsp;
+      <kbd>C</kbd> Calm
+    </div>
+  </footer>
+
+</div>
+
+<!-- ══ SETTINGS PANEL (slide-in) ════════════════════════ -->
+<div class="settings-overlay hidden" id="settings-overlay" onclick="UI.closeSettings()"></div>
+<div class="settings-panel hidden" id="settings-panel">
+  <div class="sp-header">
+    <h2 class="sp-title">Settings</h2>
+    <button class="sp-close" onclick="UI.closeSettings()">✕ Close</button>
+  </div>
+  <div class="sp-body">
+
+    <!-- VOICE SELECTION -->
+    <div class="sp-section">
+      <div class="sp-section-title">🎙 Voice Selection</div>
+      <p class="sp-desc">Choose your announcer voice. Stars (★) are high quality local voices.</p>
+      <div class="voice-select-row">
+        <select class="sp-select" id="voice-select" onchange="VoicePicker.preview()" style="flex:1"></select>
+        <button class="sp-btn-sm" onclick="VoicePicker.preview()">▶ Preview</button>
+      </div>
+      <div class="sp-divider">ElevenLabs API Key <span class="sp-badge">Free tier: 10k chars/month</span></div>
+      <input type="password" class="sp-input" id="el-key" placeholder="Paste your ElevenLabs API key here" onchange="VoicePicker.saveKeys()">
+      <div class="sp-divider">PlayHT API Key <span class="sp-badge">Free tier available</span></div>
+      <input type="password" class="sp-input" id="ph-key" placeholder="PlayHT API key" onchange="VoicePicker.saveKeys()">
+      <input type="text" class="sp-input" id="ph-user" placeholder="PlayHT User ID" onchange="VoicePicker.saveKeys()" style="margin-top:6px">
+      <p class="sp-desc" style="margin-top:6px">Get free ElevenLabs key at <strong>elevenlabs.io</strong> — Get free PlayHT key at <strong>play.ht</strong></p>
+    </div>
+
+    <!-- GIFT LIBRARY -->
+    <div class="sp-section">
+      <div class="sp-section-title">🎁 Gift Sound Library</div>
+      <p class="sp-desc">Pick a sound for every TikTok gift. New gifts are learned automatically during streams.</p>
+      <div class="gift-toolbar">
+        <input type="text" class="sp-search" id="gift-search" placeholder="Search gifts..." oninput="GiftLibrary.filter(this.value)">
+        <button class="sp-btn-sm" onclick="GiftLibrary.refresh()" id="gift-refresh-btn">🔄 Refresh</button>
+      </div>
+      <div class="gift-grid" id="gift-grid">Loading gifts...</div>
+    </div>
+
+    <!-- EVENT SOUNDS -->
+    <div class="sp-section">
+      <div class="sp-section-title">🔊 Event Sounds</div>
+      <p class="sp-desc">Choose sounds for follows, likes, shares and milestones.</p>
+      <div id="event-sounds-container"></div>
+    </div>
+
+    <!-- GIFT THRESHOLDS -->
+    <div class="sp-section">
+      <div class="sp-section-title">🎯 Gift Thresholds & Goal</div>
+      <label class="sp-row"><span>Coin Goal Tonight</span><input type="number" class="sp-num" id="set-goal" value="1000" onchange="Settings.saveGoal()"></label>
+      <label class="sp-row"><span>Small Gift (up to coins)</span><input type="number" class="sp-num" id="set-small" value="100" onchange="Settings.save()"></label>
+      <label class="sp-row"><span>Medium Gift (up to coins)</span><input type="number" class="sp-num" id="set-medium" value="1000" onchange="Settings.save()"></label>
+      <label class="sp-row"><span>Large Gift (above coins)</span><input type="number" class="sp-num" id="set-large" value="5000" onchange="Settings.save()"></label>
+    </div>
+
+    <!-- DIAMOND GLOW -->
+    <div class="sp-section">
+      <div class="sp-section-title">💎 Diamond Glow Members</div>
+      <p class="sp-desc">Your Diamond Glow community. Press Check Live to see who is streaming.</p>
+      <button class="sp-btn" onclick="DiamondGlow.checkLive()" id="dg-check-btn">🔄 Check Who Is Live</button>
+      <div class="dg-grid" id="dg-grid"></div>
+    </div>
+
+    <!-- REMINDERS -->
+    <div class="sp-section">
+      <div class="sp-section-title">⏱ Reminder Timings (minutes)</div>
+      <label class="sp-row"><span>Water Break</span><input type="number" class="sp-num" id="set-water" value="20" onchange="Settings.save()"></label>
+      <label class="sp-row"><span>Follow Nudge</span><input type="number" class="sp-num" id="set-follow-nudge" value="15" onchange="Settings.save()"></label>
+      <label class="sp-row"><span>Socials Reminder</span><input type="number" class="sp-num" id="set-socials" value="25" onchange="Settings.save()"></label>
+      <label class="sp-row"><span>Posture Check</span><input type="number" class="sp-num" id="set-posture" value="45" onchange="Settings.save()"></label>
+      <label class="sp-row"><span>Viewer Update</span><input type="number" class="sp-num" id="set-viewers-timer" value="5" onchange="Settings.save()"></label>
+      <label class="sp-row"><span>Earnings Report</span><input type="number" class="sp-num" id="set-earnings" value="10" onchange="Settings.save()"></label>
+    </div>
+
+    <!-- WHICH EVENTS -->
+    <div class="sp-section">
+      <div class="sp-section-title">🔔 Which Events to Announce</div>
+      <label class="sp-tog-row"><span>Comments</span><label class="tog"><input type="checkbox" id="en-comments" checked onchange="Settings.save()"><span class="tog-s"></span></label></label>
+      <label class="sp-tog-row"><span>Questions</span><label class="tog"><input type="checkbox" id="en-questions" checked onchange="Settings.save()"><span class="tog-s"></span></label></label>
+      <label class="sp-tog-row"><span>Follows</span><label class="tog"><input type="checkbox" id="en-follows" checked onchange="Settings.save()"><span class="tog-s"></span></label></label>
+      <label class="sp-tog-row"><span>Gifts</span><label class="tog"><input type="checkbox" id="en-gifts" checked onchange="Settings.save()"><span class="tog-s"></span></label></label>
+      <label class="sp-tog-row"><span>Shares / Reposts</span><label class="tog"><input type="checkbox" id="en-shares" checked onchange="Settings.save()"><span class="tog-s"></span></label></label>
+      <label class="sp-tog-row"><span>Likes / Hearts</span><label class="tog"><input type="checkbox" id="en-likes" onchange="Settings.save()"><span class="tog-s"></span></label></label>
+      <label class="sp-tog-row"><span>Milestones</span><label class="tog"><input type="checkbox" id="en-milestones" checked onchange="Settings.save()"><span class="tog-s"></span></label></label>
+      <label class="sp-tog-row"><span>Reminders</span><label class="tog"><input type="checkbox" id="en-reminders" checked onchange="Settings.save()"><span class="tog-s"></span></label></label>
+    </div>
+
+    <!-- NICKNAMES -->
+    <div class="sp-section">
+      <div class="sp-section-title">👋 Custom Nicknames</div>
+      <p class="sp-desc">When this viewer appears, say their custom greeting.</p>
+      <div class="kv-form">
+        <input type="text" class="sp-kv-in" id="nick-user" placeholder="TikTok username">
+        <input type="text" class="sp-kv-in flex" id="nick-greeting" placeholder="What to say">
+        <button class="sp-btn-sm" onclick="Nicknames.add()">Add</button>
+      </div>
+      <div class="tag-list" id="nicknames-list"></div>
+    </div>
+
+    <!-- KEYWORDS -->
+    <div class="sp-section">
+      <div class="sp-section-title">💬 Keyword Auto-Responses</div>
+      <p class="sp-desc">When chat contains this word, say the response automatically.</p>
+      <div class="kv-form">
+        <input type="text" class="sp-kv-in" id="kw-trigger" placeholder="Trigger word">
+        <input type="text" class="sp-kv-in flex" id="kw-response" placeholder="Response to say">
+        <button class="sp-btn-sm" onclick="Keywords.add()">Add</button>
+      </div>
+      <div class="tag-list" id="keywords-list"></div>
+    </div>
+
+    <!-- GAMES -->
+    <div class="sp-section">
+      <div class="sp-section-title">🎮 Games & Interactions</div>
+      <div class="game-grid">
+        <button class="game-btn" onclick="Games.poll()">📊 Yes/No Poll</button>
+        <button class="game-btn" onclick="Games.firstToType()">⌨ First To Type</button>
+        <button class="game-btn" onclick="Games.startGiveaway()">🎁 Giveaway</button>
+        <button class="game-btn" onclick="Games.pickWinner()">🏆 Pick Winner</button>
+        <button class="game-btn" onclick="Games.wheel()">🎡 Wheel Spin</button>
+        <button class="game-btn" onclick="Games.countdown()">⏱ Countdown</button>
+        <button class="game-btn danger-btn" onclick="Games.stop()">🛑 Stop</button>
+      </div>
+      <div class="game-status" id="game-status" aria-live="polite">No active game</div>
+    </div>
+
+    <!-- PREVIEW SOUNDS -->
+    <div class="sp-section">
+      <div class="sp-section-title">🧪 Preview Announcements</div>
+      <p class="sp-desc">Test every sound and announcement type before going live.</p>
+      <div class="test-grid">
+        <button class="tbtn" onclick="Test.comment()">💬 Comment</button>
+        <button class="tbtn" onclick="Test.question()">❓ Question</button>
+        <button class="tbtn amber-t" onclick="Test.giftSmall()">🎁 Small Gift</button>
+        <button class="tbtn amber-t" onclick="Test.giftMedium()">💝 Medium Gift</button>
+        <button class="tbtn amber-t" onclick="Test.giftLarge()">🏆 Large Gift</button>
+        <button class="tbtn green-t" onclick="Test.follow()">➕ Follow</button>
+        <button class="tbtn red-t" onclick="Test.like()">❤ Like</button>
+        <button class="tbtn green-t" onclick="Test.share()">📤 Share</button>
+        <button class="tbtn purple-t" onclick="Test.milestone()">🎉 Milestone</button>
+        <button class="tbtn" onclick="Test.streak()">🔥 Streak</button>
+        <button class="tbtn" onclick="Test.returnViewer()">👋 Return Viewer</button>
+        <button class="tbtn" onclick="App.preStreamChecklist()">✅ Pre-Stream</button>
+      </div>
+    </div>
+
+    <!-- APP SETTINGS -->
+    <div class="sp-section">
+      <div class="sp-section-title">🔧 App Settings</div>
+      <label class="sp-row"><span>Your Name</span><input type="text" class="sp-input-sm" id="set-name" value="Streamer" onchange="Settings.save()"></label>
+      <label class="sp-row"><span>Wake Word</span><input type="text" class="sp-input-sm" id="set-wakeword" value="LiveAnnouncer" onchange="Settings.save()"></label>
+      <button class="sp-btn danger-sp" onclick="Settings.reset()" style="margin-top:10px">⚠ Reset All Settings</button>
+      <button class="sp-btn" onclick="Wizard.start()" style="margin-top:6px">↩ Redo Setup Wizard</button>
+    </div>
+
+  </div>
+</div>
+
+<!-- ══ CONNECT MODAL ════════════════════════════════════ -->
+<div class="modal-bg hidden" id="connect-modal">
+  <div class="modal-box">
+    <h2 class="modal-title">🔴 Connect to TikTok Live</h2>
+    <p class="modal-desc">Select a Diamond Glow member or enter any username. The stream must already be live.</p>
+
+    <!-- DIAMOND GLOW QUICK SELECT -->
+    <div class="dg-modal-box">
+      <div class="dg-modal-header">
+        💎 Diamond Glow Members
+        <button class="dg-check-btn" onclick="DiamondGlow.checkLiveModal()" id="dg-modal-check">🔄 Check Live</button>
+      </div>
+      <div class="dg-modal-list" id="dg-modal-list"></div>
+    </div>
+
+    <!-- USERNAME INPUT -->
+    <div class="modal-label">Or enter any TikTok username</div>
+    <div class="username-box">
+      <span class="at-sign">@</span>
+      <input type="text" class="username-in" id="modal-username" placeholder="username" autocomplete="off" aria-label="TikTok username">
+    </div>
+
+    <!-- SAVED USERNAMES -->
+    <div id="saved-box" style="display:none;margin-bottom:.75rem">
+      <div class="saved-label">Recent</div>
+      <div class="saved-chips" id="saved-chips"></div>
+    </div>
+
+    <!-- SESSION ID -->
+    <details class="session-det">
+      <summary class="session-sum">🔑 Session ID — tap to set up (needed to connect)</summary>
+      <div class="session-body">
+        <p class="session-note">You only ever do this once. The app saves it forever.</p>
+        <button class="session-guide-btn" onclick="TikTok.startGuide()">🔊 Hear step by step instructions</button>
+        <div class="guide-box">
+          <div class="guide-step" id="guide-step"></div>
+          <div class="guide-text" id="guide-text">Press the button above to hear the instructions.</div>
+          <div class="guide-nav">
+            <button class="gnav-btn" onclick="TikTok.guidePrev()">◀ Back</button>
+            <button class="gnav-btn" onclick="TikTok.repeatGuide()">🔊 Repeat</button>
+            <button class="gnav-btn" onclick="TikTok.guideNext()">Next ▶</button>
+          </div>
+        </div>
+        <input type="text" class="session-input" id="modal-session" placeholder="Paste your sessionid cookie value here" autocomplete="off">
+      </div>
+    </details>
+
+    <div class="modal-btns">
+      <button class="modal-go" onclick="TikTok.connect()">Connect</button>
+      <button class="modal-cancel" onclick="TikTok.closeModal()">Cancel</button>
+    </div>
+    <p class="modal-err" id="modal-err" role="alert"></p>
+  </div>
+</div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
