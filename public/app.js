@@ -846,7 +846,7 @@ const Events = {
   // ══════════════════════════════════════════════════════════
   // THE NEW DEBOUNCED GIFT FIX
   // ══════════════════════════════════════════════════════════
-  gift(username, giftName, coins, emoji, repeatCount) {
+  gift(username, giftName, coins, emoji, repeatCount, groupId) {
     if(!en('en-gifts')) return;
 
     const gid = giftName.toLowerCase().replace(/[^a-z0-9]/g,'_');
@@ -854,26 +854,44 @@ const Events = {
       GiftLibrary.learnGift(giftName,coins,emoji||'🎁');
     }
 
-    const streakKey = username + '_' + gid;
+    // Give this specific gift combo a unique fingerprint
+    const streakKey = username + '_' + gid + (groupId ? '_' + groupId : '');
+
+    if (!S.giftStreaks) S.giftStreaks = {};
+    if (!S.giftStreakTimers) S.giftStreakTimers = {};
+    if (!S.giftHistory) S.giftHistory = {};
+
+    const now = Date.now();
+
+    // The Anti-Echo Filter: Check if we JUST announced this exact combo in the last 15 seconds.
+    // If we did, TikTok is just sending a delayed summary event. We completely ignore it.
+    if (S.giftHistory[streakKey] && (now - S.giftHistory[streakKey].time < 15000)) {
+      if (groupId) return; 
+      if (!groupId && repeatCount === S.giftHistory[streakKey].count) return;
+    }
 
     if (S.giftStreaks[streakKey]) {
-      // They kept tapping! Update the total amount they've sent
-      S.giftStreaks[streakKey].count = Math.max(S.giftStreaks[streakKey].count + 1, repeatCount || 1);
+      // They are tapping fast! Keep tracking the total count
+      if (repeatCount > 1) {
+        S.giftStreaks[streakKey].count = Math.max(S.giftStreaks[streakKey].count, repeatCount);
+      } else {
+        S.giftStreaks[streakKey].count++; // Manual increment for backup
+      }
       clearTimeout(S.giftStreakTimers[streakKey]);
     } else {
-      // Brand new gift
       S.giftStreaks[streakKey] = { name: giftName, count: repeatCount || 1, baseCoins: coins, emoji: emoji || '🎁' };
     }
 
-    // Wait exactly 2.5 seconds to see if they tap again. 
-    // If they do, the timer resets. If they don't, we announce the bundle!
+    // Wait 3.5 seconds. If no more taps come in, bundle it all together and announce!
     S.giftStreakTimers[streakKey] = setTimeout(() => {
       const data = S.giftStreaks[streakKey];
-      delete S.giftStreaks[streakKey]; // Clear out the streak so they can start a new one later
+      delete S.giftStreaks[streakKey];
+      
+      // Save this combo to the history filter so we don't accidentally repeat it
+      S.giftHistory[streakKey] = { count: data.count, time: Date.now() };
 
       const totalCoins = data.count * data.baseCoins;
 
-      // Update the scoreboard stats now that the streak is done
       S.coinsTonight += totalCoins; 
       S.giftsTonight++;
       if(el('s-coins')) el('s-coins').textContent=S.coinsTonight.toLocaleString();
@@ -897,7 +915,7 @@ const Events = {
 
       let msg, priority, opts={};
       
-      // Make it plural if there's more than one
+      // Basic pluralization
       const plural = data.count > 1 ? 's' : '';
 
       if(size==='large'){
@@ -915,7 +933,7 @@ const Events = {
       Queue.add(msg, 'gift', priority, sound, opts);
       UI.log('gift', username, `${data.emoji} ${data.name} ${data.count > 1 ? `×${data.count}` : ''} (${totalCoins.toLocaleString()} coins)`, data.emoji);
 
-    }, 2500); 
+    }, 3500); 
   },
 
   share(username){
@@ -1222,10 +1240,11 @@ const TikTok = {
       case 'WebcastGiftMessage': {
         const giftNode = msg.gift || msg.giftDetails || msg.gift_info || msg;
         const giftName = msg.giftName || giftNode.name || giftNode.giftName || giftNode.gift_name || giftNode.describe || 'Gift';
-        const coins = msg.diamondCount || msg.diamond_count || giftNode.diamondCount || giftNode.diamond_count || giftNode.coinCount || 0;
-        const repeatCount = msg.repeatCount || msg.repeat_count || giftNode.repeatCount || 1;
+        const coins = parseInt(msg.diamondCount || msg.diamond_count || giftNode.diamondCount || giftNode.diamond_count || giftNode.coinCount || 0, 10) || 0;
+        const repeatCount = parseInt(msg.repeatCount || msg.repeat_count || giftNode.repeatCount || 1, 10) || 1;
+        const groupId = msg.groupId || msg.group_id || giftNode.groupId || giftNode.group_id || '';
         
-        Events.gift(user, giftName, coins, '🎁', repeatCount);
+        Events.gift(user, giftName, coins, '🎁', repeatCount, groupId);
         break;
       }
       
