@@ -1,0 +1,19 @@
+{
+  "name": "tiktok-live-announcer",
+  "version": "2.0.0",
+  "description": "Accessibility-first TikTok Live Announcer — Created by RB and Claude AI",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "4.18.2",
+    "socket.io": "4.7.2",
+    "tiktok-live-connector": "latest",
+    "node-fetch": "2.7.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "license": "MIT"
+}
