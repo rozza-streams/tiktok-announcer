@@ -1085,7 +1085,15 @@ const TikTok = {
     ws.onmessage = (raw) => {
       try {
         const data = JSON.parse(raw.data);
-        const messages = data.messages || (data.type ? [data] : []);
+        
+        // Find every message, no matter how the API decides to nest it
+        let messages = [];
+        if (Array.isArray(data)) messages = data;
+        else if (Array.isArray(data.messages)) messages = data.messages;
+        else if (Array.isArray(data.events)) messages = data.events;
+        else if (Array.isArray(data.data)) messages = data.data;
+        else messages = [data];
+
         messages.forEach(msg => this.handleMessage(msg, username));
       } catch(e) { console.error('[Euler] Parse error:', e); }
     };
@@ -1139,19 +1147,26 @@ const TikTok = {
   handleMessage(rawMsg, username) {
     if (!rawMsg) return;
     
-    // First, identify the type (usually at the root of the event)
-    const type = rawMsg.type || rawMsg.event;
+    // 1. Unwrap the envelope
+    const msg = rawMsg.data || rawMsg.message || rawMsg.eventData || rawMsg.payload || rawMsg;
+    
+    // 2. Identify the Event Type
+    let type = rawMsg.type || rawMsg.event || rawMsg.eventName || rawMsg.name || msg.type || msg.event || msg.name;
     if (!type) return;
     
-    // EulerStream often puts the actual TikTok payload inside a "data" property
-    const msg = rawMsg.data || rawMsg.event || rawMsg;
-    
-    // Bulletproof Username Extraction - checking everywhere it could hide
-    let user = 'Someone';
-    if (msg.user) user = msg.user.nickname || msg.user.uniqueId || msg.user.displayId || 'Someone';
-    else if (msg.author) user = msg.author.nickname || msg.author.uniqueId || msg.author.displayId || 'Someone';
-    else if (msg.userDetails) user = msg.userDetails.profileName || msg.userDetails.nickname || msg.userDetails.uniqueId || 'Someone';
-    else user = msg.nickname || msg.uniqueId || msg.displayId || msg.userId || 'Someone';
+    // 3. Normalize short-hand event names
+    const t = type.toLowerCase();
+    if (t.includes('chat')) type = 'WebcastChatMessage';
+    else if (t.includes('gift')) type = 'WebcastGiftMessage';
+    else if (t.includes('follow') || t.includes('share')) type = 'WebcastSocialMessage';
+    else if (t.includes('like')) type = 'WebcastLikeMessage';
+    else if (t.includes('member') || t.includes('join')) type = 'WebcastMemberMessage';
+    else if (t.includes('roomuser') || t.includes('viewer')) type = 'WebcastRoomUserSeqMessage';
+    else if (t.includes('sub')) type = 'WebcastSubNotifyMessage';
+
+    // 4. Dig through everything to find User Info
+    const userNode = msg.user || msg.author || msg.userDetails || msg.sender || msg;
+    const user = userNode.nickname || userNode.uniqueId || userNode.displayId || msg.nickname || msg.uniqueId || 'Someone';
 
     // Mark as connected on first room message
     if (!S.tiktokConnected && (
@@ -1173,53 +1188,57 @@ const TikTok = {
       UI.log('system','TikTok',`Connected to @${username}`,'✅');
     }
 
+    // 5. Route the Data
     switch(type) {
-      case 'WebcastChatMessage':
-        // Bulletproof Comment Extraction
+      case 'WebcastChatMessage': {
         const text = msg.comment || msg.content || msg.text || msg.msg || '';
         Events.comment(user, text);
         break;
-
-      case 'WebcastGiftMessage':
+      }
+      
+      case 'WebcastGiftMessage': {
         if (msg.repeatEnd !== false) {
-          // Bulletproof Gift Extraction
-          const giftName = msg.giftName || msg.gift?.name || msg.gift?.describe || 'Gift';
-          const coins = msg.diamondCount || msg.gift?.diamondCount || msg.gift?.coinCount || 0;
-          Events.gift(user, giftName, coins, '🎁', msg.repeatCount || 1);
+          // Dig aggressively through the data to find gift details
+          const giftNode = msg.gift || msg.giftDetails || msg.gift_info || msg;
+          const giftName = msg.giftName || giftNode.name || giftNode.giftName || giftNode.gift_name || giftNode.describe || 'Gift';
+          const coins = msg.diamondCount || msg.diamond_count || giftNode.diamondCount || giftNode.diamond_count || giftNode.coinCount || 0;
+          const repeatCount = msg.repeatCount || msg.repeat_count || giftNode.repeatCount || 1;
+          
+          Events.gift(user, giftName, coins, '🎁', repeatCount);
         }
         break;
-
-      case 'WebcastSocialMessage':
-        if (msg.displayType?.includes('follow') || msg.action === 'follow') {
-          Events.follow(user);
-        } else if (msg.displayType?.includes('share') || msg.action === 'share') {
-          Events.share(user);
-        }
+      }
+      
+      case 'WebcastSocialMessage': {
+        const action = (msg.displayType || msg.action || rawMsg.event || '').toLowerCase();
+        if (action.includes('follow')) Events.follow(user);
+        else if (action.includes('share')) Events.share(user);
         break;
-
-      case 'WebcastLikeMessage':
+      }
+      
+      case 'WebcastLikeMessage': {
         Events.like(user, msg.count || msg.likeCount || msg.totalLikeCount || 1);
         break;
-
-      case 'WebcastMemberMessage':
+      }
+      
+      case 'WebcastMemberMessage': 
         break;
-
-      case 'WebcastRoomUserSeqMessage':
-        if (msg.viewerCount || msg.totalUser) Events.viewers(msg.viewerCount || msg.totalUser);
+        
+      case 'WebcastRoomUserSeqMessage': {
+        const viewers = msg.viewerCount || msg.totalUser || msg.viewers;
+        if (viewers) Events.viewers(viewers);
         break;
-
-      case 'WebcastSubNotifyMessage':
+      }
+      
+      case 'WebcastSubNotifyMessage': {
         Events.subscribe(user);
         break;
-
-      case 'WebcastControlMessage':
-        if (msg.action === 3 || msg.status === 3) {
-          TikTok.handleDisconnect('Stream has ended.');
-        }
+      }
+      
+      case 'WebcastControlMessage': {
+        if (msg.action === 3 || msg.status === 3) TikTok.handleDisconnect('Stream has ended.');
         break;
-
-      case 'pong':
-        break; 
+      }
     }
   },
 
