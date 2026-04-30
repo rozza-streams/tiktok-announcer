@@ -672,21 +672,33 @@ const DiamondGlow = {
     DIAMOND_GLOW.forEach(m => this.liveStatus[m.handle] = 'checking');
     this.render(renderId);
 
+    // Use TikTool REST API if we have a key — most reliable
+    const apiKey = localStorage.getItem('tla-tiktool-key') || '';
+
     const checks = DIAMOND_GLOW.map(async m => {
       try {
-        // Use allorigins CORS proxy to fetch TikTok live page
+        if (apiKey) {
+          // TikTool REST API — checks if user is live
+          const res = await fetch(
+            `https://api.tik.tools/v1/is-live?uniqueId=${encodeURIComponent(m.handle)}&apiKey=${encodeURIComponent(apiKey)}`,
+            { signal: AbortSignal.timeout(6000) }
+          );
+          if (res.ok) {
+            const data = await res.json();
+            this.liveStatus[m.handle] = data.isLive === true || data.live === true || data.status === 'live';
+            return;
+          }
+        }
+        // Fallback — allorigins CORS proxy
         const url = `https://api.allorigins.win/get?url=${encodeURIComponent(`https://www.tiktok.com/@${m.handle}/live`)}`;
-        const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
-        if (res.ok) {
-          const data = await res.json();
+        const res2 = await fetch(url, { signal: AbortSignal.timeout(8000) });
+        if (res2.ok) {
+          const data = await res2.json();
           const html = data.contents || '';
-          // Check for live indicators in the page content
-          const isLive = html.includes('"isLive":true') ||
-                         html.includes('"liveStatus":1') ||
-                         html.includes('liveRoomUserInfo') ||
-                         html.includes('"status":2') ||
-                         (html.includes('LIVE') && html.includes(m.handle));
-          this.liveStatus[m.handle] = isLive;
+          this.liveStatus[m.handle] =
+            html.includes('"isLive":true') ||
+            html.includes('"liveStatus":1') ||
+            html.includes('liveRoomUserInfo');
         } else {
           this.liveStatus[m.handle] = false;
         }
@@ -695,8 +707,8 @@ const DiamondGlow = {
       }
     });
 
-    // Check in batches of 4 to avoid hammering the proxy
-    for (let i = 0; i < checks.length; i += 4) {
+    // Check in batches of 4 to avoid hammering APIs
+    for (let i = 0; i < DIAMOND_GLOW.length; i += 4) {
       await Promise.all(checks.slice(i, i + 4));
     }
     this.render(renderId);
@@ -1020,8 +1032,11 @@ const Games={
 // ══════════════════════════════════════════════════════════
 const TikTok = {
   ws: null,
+  pingInterval: null,
   reconnectTimer: null,
   currentUsername: '',
+  _apiKey: '',
+  _username: '',
 
   showConnectModal() {
     el('connect-modal').classList.remove('hidden');
@@ -1058,13 +1073,22 @@ const TikTok = {
 
     // Close any existing connection
     if (this.ws) { try { this.ws.close(); } catch(_) {} this.ws = null; }
+    if (this.pingInterval) { clearInterval(this.pingInterval); this.pingInterval = null; }
 
     const url = `wss://api.tik.tools?uniqueId=${encodeURIComponent(username)}&apiKey=${encodeURIComponent(apiKey)}`;
     const ws = new WebSocket(url);
     this.ws = ws;
+    this._apiKey = apiKey;
+    this._username = username;
 
     ws.onopen = () => {
       console.log('[TikTool] Connected');
+      // Send keep-alive ping every 10 seconds to prevent idle disconnect
+      this.pingInterval = setInterval(() => {
+        if (ws.readyState === WebSocket.OPEN) {
+          try { ws.send(JSON.stringify({ type: 'ping' })); } catch(_) {}
+        }
+      }, 10000);
     };
 
     ws.onmessage = (raw) => {
@@ -1075,7 +1099,6 @@ const TikTok = {
 
         switch (msg.event) {
           case 'roomInfo':
-            // Successfully connected to a live room
             if (!S.tiktokConnected) {
               S.tiktokConnected = true;
               TikTok.closeModal();
@@ -1094,7 +1117,7 @@ const TikTok = {
             break;
 
           case 'gift':
-            if (d.isFinal !== false) { // only fire on final streak event
+            if (d.isFinal !== false) {
               Events.gift(user, d.giftName || 'Gift', d.diamondCount || 0, '🎁', d.repeatCount || 1);
             }
             break;
@@ -1125,10 +1148,13 @@ const TikTok = {
             TikTok.handleDisconnect('Stream has ended.');
             break;
 
+          case 'pong':
+          case 'ping':
+            break; // keep-alive response — ignore
+
           case 'error':
             const errMsg = d.message || msg.message || 'Connection error.';
             console.error('[TikTool] Error:', errMsg);
-            el('modal-err').textContent = errMsg;
             UI.log('alert','TikTok', errMsg,'⚠');
             break;
         }
@@ -1137,19 +1163,27 @@ const TikTok = {
 
     ws.onerror = (e) => {
       console.error('[TikTool] WebSocket error');
-      el('modal-err').textContent = 'Connection error. Check your API key and make sure the stream is live.';
       UI.log('alert','TikTok','WebSocket error','⚠');
     };
 
     ws.onclose = (e) => {
-      console.log('[TikTool] Closed, code:', e.code);
+      console.log('[TikTool] Closed, code:', e.code, 'reason:', e.reason);
+      if (this.pingInterval) { clearInterval(this.pingInterval); this.pingInterval = null; }
+
       if (S.tiktokConnected) {
-        TikTok.handleDisconnect('Disconnected from TikTok.');
+        // Was connected — try to auto-reconnect after 3 seconds
+        UI.log('system','TikTok','Connection dropped — reconnecting in 3 seconds...','🔄');
+        Queue.add('Connection dropped. Reconnecting in 3 seconds.','alert',2);
+        setTimeout(() => {
+          if (S.tiktokConnected || !S.isLive) return; // already reconnected or stream ended
+          UI.log('system','TikTok','Reconnecting...','🔄');
+          TikTok.doConnect(this._username, this._apiKey);
+        }, 3000);
       } else if (e.code === 4001 || e.code === 4003) {
-        el('modal-err').textContent = 'Invalid API key. Please check your TikTool API key and try again.';
+        el('modal-err').textContent = 'Invalid API key. Check your TikTool API key and try again.';
       } else if (e.code === 4004) {
         el('modal-err').textContent = 'Stream not found or not live. Make sure the stream is already live.';
-      } else if (e.code !== 1000) {
+      } else if (e.code !== 1000 && e.code !== 1001) {
         el('modal-err').textContent = 'Connection failed. Make sure the stream is live and try again.';
       }
     };
@@ -1167,6 +1201,7 @@ const TikTok = {
   },
 
   disconnect() {
+    if (this.pingInterval) { clearInterval(this.pingInterval); this.pingInterval = null; }
     if (this.ws) { try { this.ws.close(1000); } catch(_) {} this.ws = null; }
     this.handleDisconnect('Disconnected manually.');
   },
