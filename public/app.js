@@ -513,13 +513,13 @@ const SoundManager = {
     const container=el('event-sounds-container');
     if(!container) return;
     const events=[
-      {key:'follow',   label:'➕ New Follow'},
-      {key:'like',     label:'❤ Like / Heart Me'},
-      {key:'share',    label:'📤 Share / Repost'},
-      {key:'comment',  label:'💬 Comment'},
-      {key:'small',    label:'🎁 Small Gift (fallback)'},
-      {key:'medium',   label:'💝 Medium Gift (fallback)'},
-      {key:'large',    label:'🏆 Large Gift (fallback)'},
+      {key:'follow',  label:'➕ New Follow'},
+      {key:'like',    label:'❤ Like / Heart Me'},
+      {key:'share',   label:'📤 Share / Repost'},
+      {key:'comment', label:'💬 Comment'},
+      {key:'small',   label:'🎁 Small Gift (fallback)'},
+      {key:'medium',  label:'💝 Medium Gift (fallback)'},
+      {key:'large',   label:'🏆 Large Gift (fallback)'},
       {key:'milestone',label:'🎉 Milestone'},
       {key:'subscribe',label:'⭐ Subscribe'}
     ];
@@ -1187,7 +1187,16 @@ const TikTok = {
   handleMessage(msg, username) {
     if (!msg || !msg.type) return;
     const type = msg.type;
-    const user = msg.uniqueId || msg.userId || msg.user?.uniqueId || 'Someone';
+    
+    // THE FIX: Expanded search to find the username in EulerStream's messy payload
+    const user = msg.nickname || 
+                 msg.uniqueId || 
+                 msg.user?.nickname || 
+                 msg.user?.uniqueId || 
+                 msg.author?.nickname || 
+                 msg.author?.uniqueId || 
+                 msg.userId || 
+                 'Someone';
 
     // Mark as connected on first room message
     if (!S.tiktokConnected && (
