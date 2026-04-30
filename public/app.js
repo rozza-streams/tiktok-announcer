@@ -353,7 +353,15 @@ const Queue = {
   _speak(item) {
     const o=Object.assign({rate:S.speechRate,volume:S.voiceVolume},item.opts);
     o.onend=()=>{S.isAnnouncing=false;setTimeout(()=>this.next(),120);};
-    Speech.speak(item.text,o);
+    
+    // STRIP EMOJIS: This ensures the text-to-speech engine only reads actual words, 
+    // leaving the visual UI elements completely untouched!
+    const speakText = item.text
+      .replace(/([\u2700-\u27BF]|[\uE000-\uF8FF]|\uD83C[\uDC00-\uDFFF]|\uD83D[\uDC00-\uDFFF]|[\u2011-\u26FF]|\uD83E[\uDD10-\uDDFF])/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    Speech.speak(speakText,o);
   },
   clear(){S.queue=[];Speech.cancel();S.isAnnouncing=false;UI.updateQueue();UI.clearNP();}
 };
@@ -835,7 +843,6 @@ const Events = {
   join(username) {
     if(el('en-joins') && !en('en-joins')) return;
     
-    // Give joins a low priority (8) so they get pushed out of the way if it gets too busy
     Queue.add(`${username} joined the stream.`, 'system', 8);
     UI.log('system', username, 'Joined', '👋');
   },
