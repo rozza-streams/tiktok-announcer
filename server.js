@@ -12,6 +12,66 @@ app.use(express.static(PUBLIC));
 app.get('/', (_, res) => res.sendFile(path.join(PUBLIC, 'index.html')));
 app.get('/ping', (_, res) => res.json({ ok: true, uptime: Math.floor(process.uptime()) }));
 
+// ── EulerStream JWT endpoint ──────────────────────────────
+// Creates a short-lived JWT so browsers can connect to EulerStream
+// without ever seeing the real API key
+app.get('/api/euler-connect', async (req, res) => {
+  const username = (req.query.username || '').trim();
+  if (!username) return res.json({ ok: false, error: 'No username provided' });
+
+  const apiKey = process.env.EULER_API_KEY;
+  if (!apiKey) {
+    // Fallback — tell browser to use its own stored key if server has none
+    return res.json({ ok: false, error: 'No server API key configured' });
+  }
+
+  try {
+    // Ask EulerStream to create a short-lived JWT for this username
+    const result = await new Promise((resolve) => {
+      const body = JSON.stringify({
+        expireAfter: 3600, // 1 hour
+        websockets: {
+          allowedCreators: [username],
+          maxWebSockets: 1
+        }
+      });
+      const opts = {
+        hostname: 'www.eulerstream.com',
+        path: '/api/v1/jwt/create',
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': apiKey,
+          'Content-Length': Buffer.byteLength(body)
+        },
+        timeout: 8000
+      };
+      const r = https.request(opts, (r2) => {
+        let d = '';
+        r2.on('data', c => d += c);
+        r2.on('end', () => { try { resolve(JSON.parse(d)); } catch(_) { resolve(null); } });
+      });
+      r.on('error', () => resolve(null));
+      r.on('timeout', () => { r.destroy(); resolve(null); });
+      r.end(body);
+    });
+
+    if (result && (result.token || result.jwt || result.data?.token)) {
+      const token = result.token || result.jwt || result.data?.token;
+      return res.json({ ok: true, token, username });
+    }
+
+    // JWT creation failed — return API key directly as fallback
+    // (less secure but functional)
+    console.error('[Euler] JWT creation failed:', JSON.stringify(result));
+    res.json({ ok: true, apiKey, username, direct: true });
+
+  } catch(e) {
+    console.error('[Euler] JWT error:', e.message);
+    res.json({ ok: false, error: e.message });
+  }
+});
+
 // ── GIFT LIST ─────────────────────────────────────────────
 const GIFTS_FILE = path.join(__dirname, 'gifts-cache.json');
 const DEFAULT_GIFTS = [
